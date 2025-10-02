@@ -55,81 +55,6 @@ def compute_label_distribution(labels: torch.Tensor, num_classes: int) -> Dict[i
     return {label: label_probs[label].item() for label in range(num_classes)}
 
 
-class SameModalityDomainShift:
-    """Domain shift for same imaging modality across different clients."""
-    def __init__(self, client_id: int, modality: str = "CT", seed: int = 42):
-        self.client_id = client_id
-        self.modality = modality
-        
-        # Set random seed for reproducible client characteristics
-        np.random.seed(seed + client_id)
-        self.characteristics = self._generate_client_characteristics()
-        np.random.seed(None)
-        
-    def _generate_client_characteristics(self) -> Dict:
-        equipment_profiles = {
-        # original form
-           'high_end': {
-    'noise_level': 0.00,        # No noise
-    'contrast_range': (1.0, 1.0),  # No contrast change
-    'brightness_shift': 0.00,    # No brightness shift
-    'resolution_factor': 1.0     # No resolution change
-},
-            'mid_range': {
-        'noise_level': 0.08,        # Increased from 0.04
-        'contrast_range': (0.6, 1.4), # Wider range
-        'brightness_shift': 0.2,    # Increased from 0.1
-        'resolution_factor': 0.85
-    },
-    'older_model': {
-        'noise_level': 0.12,        # Increased from 0.06
-        'contrast_range': (0.5, 1.5), # Wider range
-        'brightness_shift': 0.3,    # Increased from 0.15
-        'resolution_factor': 0.7
-    }
-    
-        }
-        
-        profiles = list(equipment_profiles.values())
-        base_profile = profiles[self.client_id % len(profiles)]
-        print(f'client id : {self.client_id} and {base_profile}')
-        
-        characteristics = {
-            'noise_level': base_profile['noise_level'] * np.random.uniform(0.9, 1.1),
-            'contrast_scale': np.random.uniform(*base_profile['contrast_range']),
-            'brightness_shift': base_profile['brightness_shift'] * np.random.uniform(0.9, 1.1),
-            'resolution_factor': base_profile['resolution_factor']
-        }
-        
-        return characteristics
-    def ensure_tensor(self, img):
-        """Ensure the image is a PyTorch tensor."""
-        if isinstance(img, np.ndarray):
-            # Convert numpy array to tensor
-            img = torch.from_numpy(img)
-        if img.dtype != torch.float32:
-            img = img.float()
-        if len(img.shape) == 2:
-            # Add channel dimension if missing
-            img = img.unsqueeze(0)
-        return img
-    
-    def apply_transform(self, img: torch.Tensor) -> torch.Tensor:
-        """Apply domain shift transformation."""
-       
-        # 2. Contrast adjustment
-        img = self.ensure_tensor(img)
-        img = img * self.characteristics['contrast_scale']
-        
-        # 3. Brightness shift
-        img = img + self.characteristics['brightness_shift']
-        
-        # 4. Add noise
-        noise = torch.randn_like(img) * self.characteristics['noise_level']
-        img = img + noise
-        
-        return torch.clamp(img, 0, 1)
-
 
 
 def create_domain_shifted_loaders(
@@ -245,6 +170,319 @@ def create_domain_shifted_loaders(
     
    return datasets, client_validsets , testset,New_split
 
+#pathmnist dataset
+class SameModalityDomainShift:
+    """Domain shift for same imaging modality across different clients."""
+    def __init__(self, client_id: int, modality: str = "CT", seed: int = 42):
+        self.client_id = client_id
+        self.modality = modality
+        
+        # Set random seed for reproducible client characteristics
+        np.random.seed(seed + client_id)
+        self.characteristics = self._generate_client_characteristics()
+        np.random.seed(None)
+        
+    def _generate_client_characteristics(self) -> Dict:
+        equipment_profiles = {
+        # original form
+           'high_end': {
+    'noise_level': 0.00,        # No noise
+    'contrast_range': (1.0, 1.0),  # No contrast change
+    'brightness_shift': 0.00,    # No brightness shift
+    'resolution_factor': 1.0     # No resolution change
+},
+            'mid_range': {
+        'noise_level': 0.08,        # Increased from 0.04
+        'contrast_range': (0.6, 1.4), # Wider range
+        'brightness_shift': 0.2,    # Increased from 0.1
+        'resolution_factor': 0.85
+    },
+    'older_model': {
+        'noise_level': 0.12,        # Increased from 0.06
+        'contrast_range': (0.5, 1.5), # Wider range
+        'brightness_shift': 0.3,    # Increased from 0.15
+        'resolution_factor': 0.7
+    }
+    
+        }
+        
+        profiles = list(equipment_profiles.values())
+        base_profile = profiles[self.client_id % len(profiles)]
+        print(f'client id : {self.client_id} and {base_profile}')
+          
+        contrast_scale = np.random.uniform(*base_profile['contrast_range'])
+        brightness_shift = base_profile['brightness_shift'] * np.random.uniform(0.8, 1.2) * contrast_scale
+
+        characteristics = {
+    'noise_level': base_profile['noise_level'] * np.random.uniform(0.9, 1.1) * contrast_scale,
+    'contrast_scale': contrast_scale,
+    'brightness_shift': base_profile['brightness_shift'] * np.random.uniform(0.8, 1.2) * contrast_scale,
+    'resolution_factor': base_profile['resolution_factor']
+}
+
+        return characteristics
+    
+    
+    def apply_transform(self, img: torch.Tensor) -> torch.Tensor:
+        """Apply domain shift transformation."""
+       
+        # 2. Contrast adjustment
+        # If client_id is 0, return the original image without transformation
+        if self.client_id == 0:
+          return img  # No changes applied
+        
+        img = img * self.characteristics['contrast_scale']
+        
+        # 3. Brightness shift
+        img = img + self.characteristics['brightness_shift']
+        
+        # 4. Add noise
+        noise = torch.randn_like(img) * self.characteristics['noise_level']
+        img = img + noise
+        
+        return img
+
+class DomainShiftedPathMNIST(torch.utils.data.Dataset):
+    def __init__(self, base_ds, client_id, seed=42):
+        """
+        base_ds: any torch Dataset returning (img, label)
+        client_id: integer 0–5
+        """
+        self.base = base_ds
+        self.shift = SameModalityDomainShift(client_id, modality="CT", seed=seed)
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        img, label = self.base[idx]
+        img = self.shift.apply_transform(img)
+        return img, label
+
+
+from torch.utils.data import random_split, DataLoader, ConcatDataset
+
+import torch
+from torch.utils.data import DataLoader, random_split, ConcatDataset
+import math
+from typing import List, Tuple
+
+# Assuming LazyPathMNIST, build_transform, and DomainShiftedPathMNIST
+# are defined elsewhere and available in scope.
+# Note: Since the number of clients k might not be perfectly divisible by d,
+# we will distribute the shifts as evenly as possible.
+
+def make_pathmnist_clients_generalized(
+    npz_path: str,
+    k: int,  # Total number of clients (k-1 training + 1 test)
+    d: int = 3,  # Number of distinct domain shifts (d=3 by default)
+    batch_size: int = 32,
+    val_ratio: float = 0.1,
+    seed: int = 42
+) -> Tuple[List[DataLoader], List[DataLoader], DataLoader]:
+    """
+    Returns data loaders for k clients, where k-1 are training clients 
+    and the final client is the original test set. The k-1 training clients 
+    are partitioned and assigned one of d distinct domain shifts.
+    """
+    if k <= 1:
+        raise ValueError("Total number of clients (k) must be greater than 1.")
+    if d < 1:
+        raise ValueError("Number of domain shifts (d) must be at least 1.")
+
+    # 1. Load the base sets
+    ds_train = LazyPathMNIST(npz_path, split='train', transform=build_transform())
+    ds_test  = LazyPathMNIST(npz_path, split='test',  transform=build_transform())
+    
+    # 2. Split ds_train into k-1 partitions for the training clients
+    num_train_clients = k - 1
+    
+    # Calculate partition sizes for ds_train
+    # Use torch.Generator for reproducibility in splitting
+    g = torch.Generator().manual_seed(seed)
+    
+    # Calculate base size and remainder for k-1 partitions
+    base_size = len(ds_train) // num_train_clients
+    remainder = len(ds_train) % num_train_clients
+    
+    # Create a list of lengths for the partitions
+    partition_lengths = [base_size + 1] * remainder + [base_size] * (num_train_clients - remainder)
+    
+    # Split the training data into k-1 partitions
+    raw_train_partitions = random_split(ds_train, partition_lengths, generator=g)
+
+    # 3. Create Shifted Training and Validation Datasets
+    
+    train_loaders, val_loaders = [], []
+    
+    # The 'domain shifts' will be represented by offsets 0 to d-1
+    domain_shifts = list(range(d))
+
+    for client_id in range(num_train_clients):
+      partition_ds = raw_train_partitions[client_id]
+    
+      # 3a. Carve a small in-domain validation set from the partition
+      # ... (omitted random_split logic)
+    
+      # The result of random_split is the training subset and the validation subset
+      trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
+    
+      # 3b. Determine the domain shift for this client
+      # NOTE: This shift_offset (0 to d-1) is only for the server's clustering logic.
+      # The SameModalityDomainShift class needs the unique client_id.
+      shift_offset = domain_shifts[client_id % d] 
+    
+      # 3c. Apply the domain shift to both training and validation sets
+    
+      # Create shifted training set
+      shifted_trn_ds = DomainShiftedPathMNIST(
+        base_dataset=trn_base, 
+        # Pass the UNIQUE client_id (0 to k-2) to ensure unique profiles and random seeds
+        client_id=client_id, 
+        seed=seed
+    )
+    
+      # Create shifted validation set
+      shifted_val_ds = DomainShiftedPathMNIST(
+        base_dataset=val_base, 
+        # Pass the UNIQUE client_id (0 to k-2)
+        client_id=client_id, 
+        seed=seed
+    )
+        
+      # 3d. Wrap into DataLoaders
+      train_loaders.append(
+            DataLoader(shifted_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        )
+      val_loaders.append(
+            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        )
+
+
+    
+    # This acts as the k-th client's dataset (client_id = k-1)
+    test_client_loader = DataLoader(
+        ds_test, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        pin_memory=True, 
+        num_workers=4
+    )
+    
+    # The global test loader is simply the test client's loader
+    global_test_loader = test_client_loader
+
+    # Note: We need to decide how to represent the test client's data.
+    # If the FL framework expects k pairs of (train_loader, val_loader), 
+    # you might need to return (test_client_loader, None) for the last client.
+    # For simplicity, we return the k-1 training loaders and the global test loader.
+    
+    # If you must return k pairs, you'd append (test_client_loader, test_client_loader) 
+    # to train_loaders and val_loaders (treating test as both its 'train' and 'val' data).
+
+    return train_loaders, val_loaders, global_test_loader
+
+
+def create_domain_shifted_loaders(
+   root_path,
+    num_clients: int,
+    batch_size: int
+,
+    transform
+    ,domain_shift,
+    balance=False,
+    iid=True,seed=42
+) -> Tuple[List[DataLoader], List[DataLoader]]:
+   """Create domain-shifted dataloaders for each client."""
+   print(f"Dataset partitioning config: {iid}")
+ 
+   root_path=os.getcwd()
+   der = DataSplitManager(
+        num_clients=num_clients,
+        batch_size=batch_size,
+        seed=42,
+        domain_shift=True
+    )
+
+   datasets = []
+   client_validsets = []
+
+  
+   trainset_base=BreastMnistDataset(root_path,prefix='train',transform=transform)
+   validset_base=BreastMnistDataset(root_path,prefix='valid',transform=transform)
+   trainloaders=[]
+   valloaders = []
+   batch_size=13
+   New_split=False
+   try:
+    
+    New_split=False
+    train_splits, val_splits= der.load_splits()
+    print(f"Loading existing splits for domain shift data... {len(train_splits)}")
+    #for client_id in range(num_clients):
+    for client_id , (train_split, val_split) in enumerate(zip(train_splits, val_splits)):
+            print(f'== client id for sanaa {client_id}')
+            # Create subsets using saved splits
+            # Create subsets without overwriting base datasets
+            train_subset = Subset(trainset_base, train_split['indices'])
+            val_subset = Subset(validset_base, val_split['indices'])  # Use original validset_base
+            train_subset = DomainShiftedDataset(train_subset, client_id)
+            val_subset = DomainShiftedDataset(val_subset, client_id)
+          
+            # Validate
+            if len(val_subset) != len(val_split['indices']):
+                print(f"Error: Client {client_id} val_subset length {len(val_subset)} != {len(val_split['indices'])}")
+            if max(val_split['indices']) >= len(validset_base):
+                print(f"Error: Client {client_id} max index {max(val_split['indices'])} >= {len(validset_base)}")
+
+            datasets.append(train_subset)
+            client_validsets.append(val_subset)
+   except Exception as e:
+       
+        print(f"No existing splits found. Creating new splits with domain shift... {e}")
+        # Create new splits with non iid or iid distribution
+
+        if balance:
+              trainset_base = _balance_classes(trainset_base, seed)
+
+        partition_size = int(len(trainset_base) / num_clients)
+        print(f' par {partition_size} and len of train is {len(trainset_base)}')
+        lengths = [partition_size] * num_clients
+        partition_size_valid = int(len(validset_base) / num_clients)
+        lengths_valid = [partition_size_valid] * num_clients
+    
+        if iid:
+              client_validsets = random_split(validset_base, lengths_valid, torch.Generator().manual_seed(seed))
+
+              datasets = random_split(trainset_base, lengths, torch.Generator().manual_seed(seed))
+        else:
+
+          #drishlet distribution
+          # Non-IID splitting using Dirichlet distribution
+          alpha=0.5
+          min_size_ratio = 0.1  # Ensures each partition has at least 10% of average size
+          datasets = _dirichlet_split(
+                    trainset_base,
+                    num_clients,
+                    alpha=alpha,
+                    min_size_ratio = 0.1,  # Ensures each partition has at least 10% of average size,
+                    seed=seed
+                )
+          #print(f'dataset drichlet {datasets[0][0]}')    
+         
+          partition_size_valid = len(validset_base) // num_clients  # Integer division
+          remainder_valid = len(validset_base) % num_clients    # Remainder
+          lengths_valid = [partition_size_valid] * num_clients
+          for i in range(remainder_valid):
+            lengths_valid[i] += 1
+          client_validsets = random_split(validset_base, lengths_valid, torch.Generator().manual_seed(seed))
+          datasets = [DomainShiftedDataset(dataset, client_id) for client_id, dataset in enumerate(datasets)]
+          client_validsets = [DomainShiftedDataset(client_validset, client_id) for client_id, client_validset in enumerate(client_validsets)]
+   testset=BreastMnistDataset(root_path,prefix='test',transform=transform)    
+         
+
+    
+   return datasets, client_validsets , testset,New_split
 
 
 def makeBreastnistdata(root_path, prefix):
