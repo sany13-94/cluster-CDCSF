@@ -367,20 +367,7 @@ def make_pathmnist_clients_final(
         ds_test, [n_trn_test, n_val_test], generator=g_test_split
     )
 
-    # 4b. Apply the Domain Shift Wrapper. 
-    # NOTE: The SameModalityDomainShift wrapper will use client_id=k-1.
-    # If the SameModalityDomainShift logic handles unique IDs > d-1 correctly, 
-    # it will create a unique, un-shifted profile for this client.
-    
-    # Check if the SameModalityDomainShift handles client_id=0 as the unshifted baseline
-    # based on the original provided code: if self.client_id == 0: return img
-    
-    # Since this client is meant to be an *original* domain, we must ensure it 
-    # gets the 'high_end' profile from SameModalityDomainShift.
-    
-    # To enforce the original (unshifted) domain, we use client_id=0 for the shift object,
-    # as your SameModalityDomainShift class explicitly bypasses shifting for client_id=0.
-    
+   
     # Data for training (trn_test_base)
     shifted_trn_test_ds = DomainShiftedPathMNIST(
         base_dataset=trn_test_base, 
@@ -404,6 +391,7 @@ def make_pathmnist_clients_final(
 
     # 5. Define Global Test Loader
     # The original ds_test (all of it) is the dedicated global test set.
+    """
     global_test_loader = DataLoader(
         ds_test, 
         batch_size=batch_size, 
@@ -411,8 +399,10 @@ def make_pathmnist_clients_final(
         pin_memory=True, 
         num_workers=4
     )
+    """
 
-    return train_loaders, val_loaders, global_test_loader
+    return train_loaders, val_loaders
+
 def create_domain_shifted_loaders(
    root_path,
     num_clients: int,
