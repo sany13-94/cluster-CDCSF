@@ -277,9 +277,68 @@ from torch.utils.data import DataLoader, random_split
 from typing import List, Tuple
 import math
 from collections import defaultdict
-
+import medmnist
 # Assuming LazyPathMNIST, build_transform, and DomainShiftedPathMNIST are defined.
 
+class LazyPathMNIST(Dataset):
+   
+    
+    def __init__(self, npz_path: str, split: str, transform: Optional[Callable] = None):
+       
+        if split not in ['train', 'test', 'val']:
+            raise ValueError("Split must be one of 'train', 'test', or 'val'.")
+            
+        self.split = split
+        self.transform = transform
+        
+        # 1. Use the official medmnist loader to get the dataset object
+        # We pass transform=None here because we want to apply the tensor conversion 
+        # and custom transforms ourselves in __getitem__ (the lazy part).
+        dataset_class = getattr(medmnist.dataset, 'PathMNIST')
+        
+        # This automatically handles downloading the file if needed and loading the data
+        self.medmnist_ds = dataset_class(split=split, transform=None, download=True)
+        
+        # 2. Extract the NumPy arrays directly from the loaded object
+        # The medmnist object (self.medmnist_ds) already contains only the 
+        # images and labels for the requested split.
+        self.imgs = self.medmnist_ds.imgs  # NumPy array (N, H, W, C)
+        self.labels = self.medmnist_ds.labels.flatten() # NumPy array (N,)
+
+    def __len__(self) -> int:
+        """Returns the number of samples in the current split."""
+        # Use the length of the loaded NumPy array
+        return len(self.imgs)
+
+    def __getitem__(self, idx: int) :
+        """
+        Loads and processes the image and label for a given index.
+        This is where the lazy loading (tensor conversion and transform) occurs.
+        """
+        # Retrieve data from the stored numpy arrays (already specific to the split)
+        img = self.imgs[idx]
+        label = self.labels[idx]
+        
+        # PathMNIST images are typically 28x28x3 (RGB) and need to be normalized/transposed
+        # 1. Convert to PyTorch Tensor (float type for images)
+        # Images are typically uint8, so we convert to float and scale (0-255 -> 0.0-1.0)
+        img = torch.tensor(img, dtype=torch.float32) / 255.0
+
+        # 2. Reshape/Permute: Convert HWC (Height, Width, Channel) to CHW (Channel, Height, Width)
+        # This is standard for PyTorch convolutions
+        img = img.permute(2, 0, 1)
+
+        # 3. Apply custom transform (if any)
+        # Note: The DomainShiftedPathMNIST wrapper will call this transform 
+        # only if the image is being used for the base dataset.
+        if self.transform is not None:
+            img = self.transform(img)
+
+        # 4. Convert label to LongTensor for classification loss functions
+        label_tensor = torch.tensor(label, dtype=torch.long)
+        
+        return img, label_tensor   
+        
 def make_pathmnist_clients_final(
     npz_path: str,
     k: int=20,  # Total number of clients (k-1 from train + 1 from test)
