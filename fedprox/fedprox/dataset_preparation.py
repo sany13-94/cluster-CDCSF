@@ -283,7 +283,7 @@ import medmnist
 class LazyPathMNIST(Dataset):
    
     
-    def __init__(self, npz_path: str, split: str, transform: Optional[Callable] = None):
+    def __init__(self, npz_path: str, split: str, transform=None):
        
         if split not in ['train', 'test', 'val']:
             raise ValueError("Split must be one of 'train', 'test', or 'val'.")
