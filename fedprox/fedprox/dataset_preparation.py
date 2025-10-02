@@ -272,18 +272,26 @@ from typing import List, Tuple
 # Note: Since the number of clients k might not be perfectly divisible by d,
 # we will distribute the shifts as evenly as possible.
 
-def make_pathmnist_clients_generalized(
+import torch
+from torch.utils.data import DataLoader, random_split
+from typing import List, Tuple
+import math
+from collections import defaultdict
+
+# Assuming LazyPathMNIST, build_transform, and DomainShiftedPathMNIST are defined.
+
+def make_pathmnist_clients_final(
     npz_path: str,
-    k: int,  # Total number of clients (k-1 training + 1 test)
-    d: int = 3,  # Number of distinct domain shifts (d=3 by default)
+    k: int=20,  # Total number of clients (k-1 from train + 1 from test)
+    d: int = 3,  # Number of distinct domain shifts for the k-1 clients
     batch_size: int = 32,
     val_ratio: float = 0.1,
     seed: int = 42
 ) -> Tuple[List[DataLoader], List[DataLoader], DataLoader]:
     """
-    Returns data loaders for k clients, where k-1 are training clients 
-    and the final client is the original test set. The k-1 training clients 
-    are partitioned and assigned one of d distinct domain shifts.
+    Returns data loaders for k clients: k-1 clients are partitioned from ds_train 
+    and domain-shifted, and the final client uses ds_test as its data (no shift).
+    ds_test is also reserved as the global test loader.
     """
     if k <= 1:
         raise ValueError("Total number of clients (k) must be greater than 1.")
@@ -291,98 +299,120 @@ def make_pathmnist_clients_generalized(
         raise ValueError("Number of domain shifts (d) must be at least 1.")
 
     # 1. Load the base sets
+    # NOTE: The ds_test client data will be an *un-shifted* domain.
     ds_train = LazyPathMNIST(npz_path, split='train', transform=build_transform())
     ds_test  = LazyPathMNIST(npz_path, split='test',  transform=build_transform())
     
-    # 2. Split ds_train into k-1 partitions for the training clients
-    num_train_clients = k - 1
+    # 2. Split ds_train into k-1 partitions
+    num_train_clients_from_ds_train = k - 1
     
-    # Calculate partition sizes for ds_train
-    # Use torch.Generator for reproducibility in splitting
     g = torch.Generator().manual_seed(seed)
     
-    # Calculate base size and remainder for k-1 partitions
-    base_size = len(ds_train) // num_train_clients
-    remainder = len(ds_train) % num_train_clients
+    # Calculate partition sizes for k-1 partitions
+    base_size = len(ds_train) // num_train_clients_from_ds_train
+    remainder = len(ds_train) % num_train_clients_from_ds_train
+    partition_lengths = [base_size + 1] * remainder + [base_size] * (num_train_clients_from_ds_train - remainder)
     
-    # Create a list of lengths for the partitions
-    partition_lengths = [base_size + 1] * remainder + [base_size] * (num_train_clients - remainder)
-    
-    # Split the training data into k-1 partitions
     raw_train_partitions = random_split(ds_train, partition_lengths, generator=g)
 
-    # 3. Create Shifted Training and Validation Datasets
-    
+    # 3. Create Shifted Training and Validation Datasets (Clients 0 to k-2)
     train_loaders, val_loaders = [], []
-    
-    # The 'domain shifts' will be represented by offsets 0 to d-1
-    domain_shifts = list(range(d))
+    domain_shifts = list(range(d)) # The shifts are indexed 0, 1, 2, ... d-1
 
-    for client_id in range(num_train_clients):
-      partition_ds = raw_train_partitions[client_id]
-    
-      # 3a. Carve a small in-domain validation set from the partition
-      # ... (omitted random_split logic)
-    
-      # The result of random_split is the training subset and the validation subset
-      trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
-    
-      # 3b. Determine the domain shift for this client
-      # NOTE: This shift_offset (0 to d-1) is only for the server's clustering logic.
-      # The SameModalityDomainShift class needs the unique client_id.
-      shift_offset = domain_shifts[client_id % d] 
-    
-      # 3c. Apply the domain shift to both training and validation sets
-    
-      # Create shifted training set
-      shifted_trn_ds = DomainShiftedPathMNIST(
-        base_dataset=trn_base, 
-        # Pass the UNIQUE client_id (0 to k-2) to ensure unique profiles and random seeds
-        client_id=client_id, 
-        seed=seed
-    )
-    
-      # Create shifted validation set
-      shifted_val_ds = DomainShiftedPathMNIST(
-        base_dataset=val_base, 
-        # Pass the UNIQUE client_id (0 to k-2)
-        client_id=client_id, 
-        seed=seed
-    )
+    for client_id in range(num_train_clients_from_ds_train):
+        partition_ds = raw_train_partitions[client_id]
         
-      # 3d. Wrap into DataLoaders
-      train_loaders.append(
+        # 3a. Carve local validation set from the partition
+        n_val = int(len(partition_ds) * val_ratio)
+        n_trn = len(partition_ds) - n_val
+        
+        g_split = torch.Generator().manual_seed(seed + client_id)
+        trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
+        
+        # 3b. Determine the domain shift for this client (for grouping/server logic)
+        shift_offset = domain_shifts[client_id % d] 
+        
+        # 3c. Apply the domain shift. Use the UNIQUE client_id for unique randomization.
+        shifted_trn_ds = DomainShiftedPathMNIST(
+            base_dataset=trn_base, 
+            client_id=client_id, 
+            seed=seed
+        )
+        shifted_val_ds = DomainShiftedPathMNIST(
+            base_dataset=val_base, 
+            client_id=client_id, 
+            seed=seed
+        )
+        
+        # 3d. Wrap into DataLoaders
+        train_loaders.append(
             DataLoader(shifted_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
         )
-      val_loaders.append(
+        val_loaders.append(
             DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
         )
 
-
+    # --------------------------------------------------------------------------
+    # 4. Final Client: The Original Test Set Domain (Client k-1)
+    # --------------------------------------------------------------------------
     
-    # This acts as the k-th client's dataset (client_id = k-1)
-    test_client_loader = DataLoader(
+    final_client_id = k - 1
+    
+    # 4a. Carve a small validation set from ds_test
+    n_val_test = int(len(ds_test) * val_ratio)
+    n_trn_test = len(ds_test) - n_val_test
+    
+    g_test_split = torch.Generator().manual_seed(seed + final_client_id)
+    trn_test_base, val_test_base = random_split(
+        ds_test, [n_trn_test, n_val_test], generator=g_test_split
+    )
+
+    # 4b. Apply the Domain Shift Wrapper. 
+    # NOTE: The SameModalityDomainShift wrapper will use client_id=k-1.
+    # If the SameModalityDomainShift logic handles unique IDs > d-1 correctly, 
+    # it will create a unique, un-shifted profile for this client.
+    
+    # Check if the SameModalityDomainShift handles client_id=0 as the unshifted baseline
+    # based on the original provided code: if self.client_id == 0: return img
+    
+    # Since this client is meant to be an *original* domain, we must ensure it 
+    # gets the 'high_end' profile from SameModalityDomainShift.
+    
+    # To enforce the original (unshifted) domain, we use client_id=0 for the shift object,
+    # as your SameModalityDomainShift class explicitly bypasses shifting for client_id=0.
+    
+    # Data for training (trn_test_base)
+    shifted_trn_test_ds = DomainShiftedPathMNIST(
+        base_dataset=trn_test_base, 
+        client_id=0, # Use client_id=0 to enforce UN-SHIFTED data
+        seed=seed
+    )
+    # Data for validation (val_test_base)
+    shifted_val_test_ds = DomainShiftedPathMNIST(
+        base_dataset=val_test_base, 
+        client_id=0, # Use client_id=0 to enforce UN-SHIFTED data
+        seed=seed
+    )
+    
+    # 4c. Wrap into DataLoaders and append to the lists
+    train_loaders.append(
+        DataLoader(shifted_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+    )
+    val_loaders.append(
+        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+    )
+
+    # 5. Define Global Test Loader
+    # The original ds_test (all of it) is the dedicated global test set.
+    global_test_loader = DataLoader(
         ds_test, 
         batch_size=batch_size, 
         shuffle=False, 
         pin_memory=True, 
         num_workers=4
     )
-    
-    # The global test loader is simply the test client's loader
-    global_test_loader = test_client_loader
-
-    # Note: We need to decide how to represent the test client's data.
-    # If the FL framework expects k pairs of (train_loader, val_loader), 
-    # you might need to return (test_client_loader, None) for the last client.
-    # For simplicity, we return the k-1 training loaders and the global test loader.
-    
-    # If you must return k pairs, you'd append (test_client_loader, test_client_loader) 
-    # to train_loaders and val_loaders (treating test as both its 'train' and 'val' data).
 
     return train_loaders, val_loaders, global_test_loader
-
-
 def create_domain_shifted_loaders(
    root_path,
     num_clients: int,
