@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/4a3bb946e8294d0c893ce5ede35f5c1c/artifacts
+end_time: 1759529601668
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 4a3bb946e8294d0c893ce5ede35f5c1c
+run_name: omniscient-newt-837
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759529601535
+status: 4
+tags: []
+user_id: unknown

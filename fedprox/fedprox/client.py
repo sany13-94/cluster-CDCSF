@@ -412,7 +412,7 @@ cfg=None  ,
 num_classes=num_classes,
 save_dir="feature_visualizations"
           )
-          #print(f'  ffghf {trainloader}')
+          
           valloader = valloaders[int(cid)]
           for batch_idx, (data, target) in enumerate(valloader):
             print(f"Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")

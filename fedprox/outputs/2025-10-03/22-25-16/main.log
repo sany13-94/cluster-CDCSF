@@ -1,0 +1,170 @@
+[2025-10-03 22:25:20,844][flwr][DEBUG] - Pre-registering run with id 513569130417237008
+[2025-10-03 22:25:20,845][flwr][DEBUG] - Using InMemoryState
+[2025-10-03 22:25:20,845][flwr][DEBUG] - Using InMemoryState
+[2025-10-03 22:25:20,846][flwr][DEBUG] - Using InMemoryState
+[2025-10-03 22:25:20,847][flwr][DEBUG] - Registered 3 nodes
+[2025-10-03 22:25:20,847][flwr][DEBUG] - Supported backends: ['ray']
+[2025-10-03 22:25:20,850][flwr][DEBUG] - Initialising: RayBackend
+[2025-10-03 22:25:20,851][flwr][DEBUG] - Backend config: {'num_cpus': 2, 'num_gpus': 0.0, 'init_args': {'logging_level': 30, 'log_to_driver': True}, 'client_resources': {'num_cpus': 2, 'num_gpus': 0}, 'actor': {'tensorflow': 0}}
+[2025-10-03 22:25:21,012][flwr][INFO] - Starting Flower ServerApp, config: num_rounds=3, no round_timeout
+[2025-10-03 22:25:21,015][flwr][INFO] - 
+[2025-10-03 22:25:21,015][flwr][INFO] - [INIT]
+[2025-10-03 22:25:21,015][flwr][INFO] - Requesting initial parameters from one random client
+[2025-10-03 22:25:37,981][flwr][DEBUG] - Constructed ActorPool with: 1 actors
+[2025-10-03 22:25:37,984][flwr][DEBUG] - Using InMemoryState
+[2025-10-03 22:26:00,882][flwr][ERROR] - An exception was raised when processing a message by RayBackend
+[2025-10-03 22:26:00,882][flwr][ERROR] - [36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 144, in __call__
+    return self._call(message, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 128, in ffn
+    out_message = handle_legacy_message_from_msgtype(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/message_handler/message_handler.py", line 96, in handle_legacy_message_from_msgtype
+    client = client_fn(context)
+             ^^^^^^^^^^^^^^^^^^
+  File "/content/cluster-CDCSF/fedprox/fedprox/client.py", line 415, in client_fn
+    print(f'  ffghf {valloader}')
+                     ^^^^^^^^^
+UnboundLocalError: cannot access local variable 'valloader' where it is not associated with a value
+
+The above exception was the direct cause of the following exception:
+
+[36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/simulation/ray_transport/ray_actor.py", line 64, in run
+    raise ClientAppException(str(ex)) from ex
+flwr.client.client_app.ClientAppException: 
+Exception ClientAppException occurred. Message: cannot access local variable 'valloader' where it is not associated with a value
+[2025-10-03 22:26:00,885][flwr][ERROR] - Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/superlink/fleet/vce/vce_api.py", line 111, in worker
+    out_mssg, updated_context = backend.process_message(message, context)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/superlink/fleet/vce/backend/raybackend.py", line 189, in process_message
+    raise ex
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/superlink/fleet/vce/backend/raybackend.py", line 176, in process_message
+    ) = self.pool.fetch_result_and_return_actor_to_pool(future)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/simulation/ray_transport/ray_actor.py", line 480, in fetch_result_and_return_actor_to_pool
+    _, out_mssg, updated_context = ray.get(future)
+                                   ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/ray/_private/auto_init_hook.py", line 21, in auto_init_wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/ray/_private/client_mode_hook.py", line 103, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/ray/_private/worker.py", line 2639, in get
+    values, debugger_breakpoint = worker.get_objects(object_refs, timeout=timeout)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/ray/_private/worker.py", line 864, in get_objects
+    raise value.as_instanceof_cause()
+ray.exceptions.RayTaskError(ClientAppException): [36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 144, in __call__
+    return self._call(message, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 128, in ffn
+    out_message = handle_legacy_message_from_msgtype(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/message_handler/message_handler.py", line 96, in handle_legacy_message_from_msgtype
+    client = client_fn(context)
+             ^^^^^^^^^^^^^^^^^^
+  File "/content/cluster-CDCSF/fedprox/fedprox/client.py", line 415, in client_fn
+    print(f'  ffghf {valloader}')
+                     ^^^^^^^^^
+UnboundLocalError: cannot access local variable 'valloader' where it is not associated with a value
+
+The above exception was the direct cause of the following exception:
+
+[36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/simulation/ray_transport/ray_actor.py", line 64, in run
+    raise ClientAppException(str(ex)) from ex
+flwr.client.client_app.ClientAppException: 
+Exception ClientAppException occurred. Message: cannot access local variable 'valloader' where it is not associated with a value
+
+[2025-10-03 22:26:00,901][flwr][ERROR] - ServerApp thread raised an exception: Message contains an Error (reason: <class 'ray.exceptions.RayTaskError(ClientAppException)'>:<'[36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 144, in __call__
+    return self._call(message, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 128, in ffn
+    out_message = handle_legacy_message_from_msgtype(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/message_handler/message_handler.py", line 96, in handle_legacy_message_from_msgtype
+    client = client_fn(context)
+             ^^^^^^^^^^^^^^^^^^
+  File "/content/cluster-CDCSF/fedprox/fedprox/client.py", line 415, in client_fn
+    print(f'  ffghf {valloader}')
+                     ^^^^^^^^^
+UnboundLocalError: cannot access local variable 'valloader' where it is not associated with a value
+
+The above exception was the direct cause of the following exception:
+
+[36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/simulation/ray_transport/ray_actor.py", line 64, in run
+    raise ClientAppException(str(ex)) from ex
+flwr.client.client_app.ClientAppException: 
+Exception ClientAppException occurred. Message: cannot access local variable 'valloader' where it is not associated with a value'>). It originated during client-side execution of a message.
+[2025-10-03 22:26:00,904][flwr][ERROR] - Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/flwr/simulation/run_simulation.py", line 283, in server_th_with_start_checks
+    updated_context = _run(
+                      ^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/run_serverapp.py", line 62, in run
+    server_app(grid=grid, context=context)
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server_app.py", line 166, in __call__
+    start_grid(
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/compat/app.py", line 90, in start_grid
+    hist = run_fl(
+           ^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server.py", line 492, in run_fl
+    hist, elapsed_time = server.fit(
+                         ^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server.py", line 93, in fit
+    self.parameters = self._get_initial_parameters(server_round=0, timeout=timeout)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server.py", line 284, in _get_initial_parameters
+    get_parameters_res = random_client.get_parameters(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/compat/grid_client_proxy.py", line 63, in get_parameters
+    in_recorddict = self._send_receive_recorddict(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/compat/grid_client_proxy.py", line 131, in _send_receive_recorddict
+    raise ValueError(
+ValueError: Message contains an Error (reason: <class 'ray.exceptions.RayTaskError(ClientAppException)'>:<'[36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 144, in __call__
+    return self._call(message, context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/client_app.py", line 128, in ffn
+    out_message = handle_legacy_message_from_msgtype(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/client/message_handler/message_handler.py", line 96, in handle_legacy_message_from_msgtype
+    client = client_fn(context)
+             ^^^^^^^^^^^^^^^^^^
+  File "/content/cluster-CDCSF/fedprox/fedprox/client.py", line 415, in client_fn
+    print(f'  ffghf {valloader}')
+                     ^^^^^^^^^
+UnboundLocalError: cannot access local variable 'valloader' where it is not associated with a value
+
+The above exception was the direct cause of the following exception:
+
+[36mray::ClientAppActor.run()[39m (pid=30832, ip=172.28.0.12, actor_id=ec2d2a7e6b2ff2b94fdcedd101000000, repr=<flwr.simulation.ray_transport.ray_actor.ClientAppActor object at 0x7926341b5df0>)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/simulation/ray_transport/ray_actor.py", line 64, in run
+    raise ClientAppException(str(ex)) from ex
+flwr.client.client_app.ClientAppException: 
+Exception ClientAppException occurred. Message: cannot access local variable 'valloader' where it is not associated with a value'>). It originated during client-side execution of a message.
+
+[2025-10-03 22:26:00,975][flwr][DEBUG] - ServerApp finished running.
+[2025-10-03 22:26:00,976][flwr][DEBUG] - Triggered stop event for Simulation Engine.
+[2025-10-03 22:26:01,887][flwr][DEBUG] - Terminated 1 actors
+[2025-10-03 22:26:03,541][flwr][DEBUG] - Terminated RayBackend
+[2025-10-03 22:26:06,542][flwr][DEBUG] - Queue timeout. No context received.

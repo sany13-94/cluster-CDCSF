@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/1d67b4c229e04574bb8fab4cd1e9bff4/artifacts
+end_time: 1759529099342
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 1d67b4c229e04574bb8fab4cd1e9bff4
+run_name: tasteful-bug-467
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759529099186
+status: 4
+tags: []
+user_id: unknown

@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/bae98ea68255476a93338c205922c2d4/artifacts
+end_time: 1759530360868
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: bae98ea68255476a93338c205922c2d4
+run_name: monumental-lamb-286
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759530360743
+status: 4
+tags: []
+user_id: unknown

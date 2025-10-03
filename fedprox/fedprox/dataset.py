@@ -87,7 +87,7 @@ def load_datasets(  # pylint: disable=too-many-arguments
     # Create domain-shifted dataloaders
     if domain_shift==True:
       d=3
-      trainset, valsets, testset,New_split = make_pathmnist_clients_final(
+      trainset, valsets = make_pathmnist_clients_final(
         num_clients,
         d,
         batch_size
@@ -97,20 +97,9 @@ def load_datasets(  # pylint: disable=too-many-arguments
       trainloaders = []
       valloaders = []
       
-   
-     
-      for i,trainset in enumerate(trainset):
-        
-        trainloaders.append(DataLoader(trainset, batch_size=batch_size, shuffle=True))
-        valloaders.append(DataLoader(valsets[i], batch_size=batch_size))
     
-      testloaders=DataLoader(testset, batch_size=batch_size)
-      if New_split==True:
-       print(f'save New splitting')
-       # Save the splits
-
-       save_splits(num_clients,trainloaders, valloaders, testloaders,domain_shift=True)
-        
+      #testloaders=DataLoader(testset, batch_size=batch_size)
+      
     else:
      
       datasets, testset ,validsets, New_split= _partition_data(
@@ -140,4 +129,4 @@ def load_datasets(  # pylint: disable=too-many-arguments
 
        save_splits(num_clients,trainloaders, valloaders, testloaders)
         
-    return trainloaders, valloaders,testloaders
+    return trainset, valsets

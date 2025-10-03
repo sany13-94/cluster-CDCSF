@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/dba248c3250244c8b450f22cf08c8272/artifacts
+end_time: 1759531041180
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: dba248c3250244c8b450f22cf08c8272
+run_name: grandiose-vole-452
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759531040846
+status: 4
+tags: []
+user_id: unknown

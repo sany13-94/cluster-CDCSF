@@ -207,29 +207,30 @@ def main(cfg: DictConfig) -> None:
     # print config structured as YAML
     print(OmegaConf.to_yaml(cfg))
 
-    trainloaders, valloaders, testloader=data_load(cfg)
+    trainloaders, valloaders=data_load(cfg)
     # Print data distribution before visualization
    
         
-    visualize_intensity_distributions(trainloaders, cfg.num_clients) 
-    visualize_class_domain_shift(trainloaders)    # Visualize label distributions
-    visualizer = LabelDistributionVisualizer(
-        num_clients=cfg.num_clients,
-        num_classes=2  # For binary classification in breast cancer dataset
-    )
+    #visualize_intensity_distributions(trainloaders, cfg.num_clients) 
+    #visualize_class_domain_shift(trainloaders)    # Visualize label distributions
+    #visualizer = LabelDistributionVisualizer(
+    #    num_clients=cfg.num_clients,
+    #    num_classes=2  # For binary classification in breast cancer dataset
+    #)
     # Create visualization directory
     viz_dir = os.path.join(os.getcwd(), 'visualizations')
     # Generate and save visualizations
-    save_path = os.path.join(viz_dir, 'initial_label_distribution.png')
-    client_distributions, global_distribution = visualizer.plot_label_distributions(
-        trainloaders,
-        save_path=save_path
-    )
+    #save_path = os.path.join(viz_dir, 'initial_label_distribution.png')
+    #client_distributions, global_distribution = visualizer.plot_label_distributions(
+    #    trainloaders,
+    #    save_path=save_path
+    #)
     
     # Log distribution metrics
-    distribution_metrics = visualizer.compute_distribution_metrics(client_distributions)
+    #distribution_metrics = visualizer.compute_distribution_metrics(client_distributions)
     
     if strategy=="gpaf":
+      print(f'2: {valloaders[0]}')
       client_fn = gen_client_fn(
         num_clients=cfg.num_clients,
         num_epochs=cfg.num_epochs,
@@ -289,13 +290,14 @@ def main(cfg: DictConfig) -> None:
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
 def data_load(cfg: DictConfig):
-  trainloaders, valloaders, testloader = load_datasets(
+  trainloaders, valloaders = load_datasets(
         config=cfg.dataset_config,
         num_clients=cfg.num_clients,
         batch_size=cfg.batch_size,
         domain_shift=True
     )
-  return trainloaders, valloaders, testloader   
+  print(f'1: {valloaders[0]}')
+  return trainloaders, valloaders   
 if __name__ == "__main__":
     
     main()

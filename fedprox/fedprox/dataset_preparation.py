@@ -388,12 +388,12 @@ def make_pathmnist_clients_final(
         
         # 3c. Apply the domain shift. Use the UNIQUE client_id for unique randomization.
         shifted_trn_ds = DomainShiftedPathMNIST(
-            base_dataset=trn_base, 
+            base_ds=trn_base, 
             client_id=client_id, 
             seed=seed
         )
         shifted_val_ds = DomainShiftedPathMNIST(
-            base_dataset=val_base, 
+            base_ds=val_base, 
             client_id=client_id, 
             seed=seed
         )
@@ -424,13 +424,13 @@ def make_pathmnist_clients_final(
    
     # Data for training (trn_test_base)
     shifted_trn_test_ds = DomainShiftedPathMNIST(
-        base_dataset=trn_test_base, 
+        base_ds=trn_test_base, 
         client_id=0, # Use client_id=0 to enforce UN-SHIFTED data
         seed=seed
     )
     # Data for validation (val_test_base)
     shifted_val_test_ds = DomainShiftedPathMNIST(
-        base_dataset=val_test_base, 
+        base_ds=val_test_base, 
         client_id=0, # Use client_id=0 to enforce UN-SHIFTED data
         seed=seed
     )
