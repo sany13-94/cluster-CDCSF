@@ -340,18 +340,13 @@ class LazyPathMNIST(Dataset):
         return img, label_tensor   
         
 def make_pathmnist_clients_final(
-    npz_path: str,
     k: int=20,  # Total number of clients (k-1 from train + 1 from test)
     d: int = 3,  # Number of distinct domain shifts for the k-1 clients
     batch_size: int = 32,
     val_ratio: float = 0.1,
     seed: int = 42
 ) -> Tuple[List[DataLoader], List[DataLoader], DataLoader]:
-    """
-    Returns data loaders for k clients: k-1 clients are partitioned from ds_train 
-    and domain-shifted, and the final client uses ds_test as its data (no shift).
-    ds_test is also reserved as the global test loader.
-    """
+   
     if k <= 1:
         raise ValueError("Total number of clients (k) must be greater than 1.")
     if d < 1:
@@ -359,8 +354,8 @@ def make_pathmnist_clients_final(
 
     # 1. Load the base sets
     # NOTE: The ds_test client data will be an *un-shifted* domain.
-    ds_train = LazyPathMNIST(npz_path, split='train', transform=build_transform())
-    ds_test  = LazyPathMNIST(npz_path, split='test',  transform=build_transform())
+    ds_train = LazyPathMNIST(split='train', transform=build_transform())
+    ds_test  = LazyPathMNIST(split='test',  transform=build_transform())
     
     # 2. Split ds_train into k-1 partitions
     num_train_clients_from_ds_train = k - 1
