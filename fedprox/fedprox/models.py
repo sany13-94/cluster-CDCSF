@@ -27,7 +27,6 @@ from torch.cuda.amp import autocast, GradScaler
 nested_repo_path = os.path.join(os.path.dirname(__file__),  "..","Swin-Transformer-fed")
 sys.path.append(os.path.abspath(nested_repo_path))
 print(f'gg: {nested_repo_path}')
-from models.swin_transformer import SwinTransformer
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import torch.nn as nn
 import torch

@@ -28,7 +28,6 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 import json
-from fedprox.client_monitoring import CRACS_MDA, load_log_data
 from flwr.server.strategy import Strategy,FedAvg
 from fedprox.models import test,test_gpaf 
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
@@ -42,8 +41,7 @@ import numpy as np
 from flwr.server.strategy import Strategy
 from flwr.server.client_manager import ClientManager
 import os
-from fedprox.client_monitoring import update_histories
-from fedprox.client_monitoring import T_hat
+
 
 from flwr.common import (
     EvaluateIns,
@@ -56,6 +54,7 @@ from flwr.common import (
     Scalar,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
+     GetPropertiesIns, GetPropertiesRes
 )
 
 class GPAFStrategy(FedAvg):

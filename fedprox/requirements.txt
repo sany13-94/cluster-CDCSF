@@ -1,0 +1,5 @@
+flwr==1.22.0
+tensorflow==2.19.0
+protobuf==4.25.3
+grpcio-tools==1.62.1
+mlflow==3.4.0

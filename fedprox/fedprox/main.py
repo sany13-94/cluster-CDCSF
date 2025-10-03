@@ -25,7 +25,6 @@ import os
 import subprocess
 #from fedprox.mlflowtracker import setup_tracking
 from fedprox.features_visualization import StructuredFeatureVisualizer
-from fedprox.strategy import FedAVGWithEval
 from fedprox.models import get_model
 #from fedprox.models import Generator
 FitConfig = Dict[str, Union[bool, float]]
@@ -294,7 +293,7 @@ def data_load(cfg: DictConfig):
         config=cfg.dataset_config,
         num_clients=cfg.num_clients,
         batch_size=cfg.batch_size,
-        domain_shift=False
+        domain_shift=True
     )
   return trainloaders, valloaders, testloader   
 if __name__ == "__main__":

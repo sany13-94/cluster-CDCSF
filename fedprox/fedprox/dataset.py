@@ -92,8 +92,7 @@ def load_datasets(  # pylint: disable=too-many-arguments
         d,
         batch_size
         ,
-        transform,
-        iid=config.iid
+    
       )
       trainloaders = []
       valloaders = []

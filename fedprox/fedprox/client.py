@@ -15,7 +15,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 import json
-from flwr.client import NumPyClient, Client,  NumPyClient,GetPropertiesIns, GetPropertiesRes
+from flwr.client import NumPyClient, Client,  NumPyClient
 
   
 from flwr.common import Status, Code, parameters_to_ndarrays ,ConfigsRecord, MetricsRecord, ParametersRecord ,Context, ConfigRecord
@@ -34,6 +34,7 @@ from flwr.common import (
     Scalar,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
+     GetPropertiesIns, GetPropertiesRes
 )
 import os
 from fedprox.models import train_gpaf,test_gpaf,Encoder,Classifier,Discriminator,GlobalGenerator,LocalDiscriminator,init_net,train_moon,test_moon,Decoder,save_client_model,load_client_model
