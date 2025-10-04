@@ -238,11 +238,12 @@ save_dir="feature_visualizations_gpaf"
       if current_round_durations:
         current_avg_duration = sum(current_round_durations) / len(current_round_durations)
         ewma_decay = 0.1
+        """
         if self.global_T_max == 0.0:
             self.global_T_max = current_avg_duration
         else:
             self.global_T_max = (1 - ewma_decay) * self.global_T_max + ewma_decay * current_avg_duration
-
+        """
       aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
     
       return ndarrays_to_parameters(aggregated_params), {}
