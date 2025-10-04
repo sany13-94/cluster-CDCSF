@@ -47,14 +47,14 @@ class FederatedClient(fl.client.NumPyClient):
      client_id,
       mlflow,
       run_id,
-      feature_visualizer
-      ,
+      feature_visualizer,
+      
             device):
         self.net = net
    
         self.traindata = data
         self.validdata=validset
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         print(f'device gpu {self.device}')
         self.local_epochs=local_epochs
         self.client_id=client_id
@@ -474,7 +474,7 @@ def gen_client_fn(
 experiment_name =None,
 strategy='fedavg',
 cfg=None  ,
- device= torch.device("cpu")
+ device= torch.device("cuda")
 
 ) -> Callable[[Context], Client]:  # pylint: disable=too-many-arguments
     import mlflow
