@@ -37,8 +37,7 @@ from flwr.common import (
      GetPropertiesIns, GetPropertiesRes
 )
 import os
-from fedprox.models import train_gpaf,test_gpaf,Encoder,Classifier,Discriminator,ModelCDCSF,train_moon,test_moon,save_client_model,load_client_model
-from fedprox.dataset_preparation import compute_label_counts, compute_label_distribution
+from fedprox.models import train_gpaf,test_gpaf,ModelCDCSF,train_moon
 from fedprox.features_visualization import extract_features_and_labels,StructuredFeatureVisualizer
 class FederatedClient(fl.client.NumPyClient):
     def __init__(self, net: ModelCDCSF, 
@@ -63,7 +62,7 @@ class FederatedClient(fl.client.NumPyClient):
           print(f"dd Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")
           break  # J
         # Move models to device
-        self.net.to(self.net)
+        self.net.to(self.device)
         
         self. mlflow= mlflow
         # Initialize optimizers
@@ -357,6 +356,8 @@ class FederatedClient(fl.client.NumPyClient):
             delay = random.uniform(0.5, 2.0)
             time.sleep(delay)
 
+
+
 def gen_client_fn(
     num_clients: int,
     num_rounds: int,
@@ -404,8 +405,10 @@ cfg=None  ,
                
         if strategy=="gpaf":
           
-          img_shape=(28,28)
-          model = ModelCDCSF(latent_dim).to(device)
+          #img_shape=(28,28)
+          #model = ModelCDCSF(latent_dim).to(device)
+          model = ModelCDCSF(out_dim=256, n_classes=9).to(device)
+
           trainloader = trainloaders[int(cid)]
           # Initialize the feature visualizer for all clients
           feature_visualizer = StructuredFeatureVisualizer(

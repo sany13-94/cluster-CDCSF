@@ -1,0 +1,21 @@
+[2025-10-04 18:25:35,665][flwr][DEBUG] - Pre-registering run with id 6290601196438298218
+[2025-10-04 18:25:35,666][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 18:25:35,666][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 18:25:35,667][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 18:25:35,667][flwr][DEBUG] - Registered 3 nodes
+[2025-10-04 18:25:35,670][flwr][DEBUG] - Supported backends: ['ray']
+[2025-10-04 18:25:35,676][flwr][DEBUG] - Initialising: RayBackend
+[2025-10-04 18:25:35,677][flwr][DEBUG] - Backend config: {'num_cpus': 2, 'num_gpus': 0.0, 'init_args': {'logging_level': 30, 'log_to_driver': True}, 'client_resources': {'num_cpus': 2, 'num_gpus': 0}, 'actor': {'tensorflow': 0}}
+[2025-10-04 18:25:35,942][flwr][INFO] - Starting Flower ServerApp, config: num_rounds=3, no round_timeout
+[2025-10-04 18:25:35,944][flwr][INFO] - 
+[2025-10-04 18:25:35,945][flwr][INFO] - [INIT]
+[2025-10-04 18:25:35,945][flwr][INFO] - Requesting initial parameters from one random client
+[2025-10-04 18:25:56,569][flwr][DEBUG] - Constructed ActorPool with: 1 actors
+[2025-10-04 18:25:56,569][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 18:26:18,236][flwr][INFO] - Received initial parameters from one random client
+[2025-10-04 18:26:18,236][flwr][INFO] - Starting evaluation of initial global parameters
+[2025-10-04 18:26:18,236][flwr][INFO] - Evaluation returned no results (`None`)
+[2025-10-04 18:26:18,236][flwr][INFO] - 
+[2025-10-04 18:26:18,236][flwr][INFO] - [ROUND 1]
+[2025-10-04 18:26:18,237][flwr][INFO] - configure_fit: strategy sampled 3 clients (out of 3)
+[2025-10-04 18:27:10,887][flwr][DEBUG] - Terminated 0 actors

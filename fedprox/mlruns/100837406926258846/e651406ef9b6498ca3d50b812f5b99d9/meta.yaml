@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/e651406ef9b6498ca3d50b812f5b99d9/artifacts
+end_time: 1759602215294
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: e651406ef9b6498ca3d50b812f5b99d9
+run_name: unruly-panda-393
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759602214709
+status: 4
+tags: []
+user_id: unknown

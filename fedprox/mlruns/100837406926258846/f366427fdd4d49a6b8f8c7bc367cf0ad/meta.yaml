@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/f366427fdd4d49a6b8f8c7bc367cf0ad/artifacts
+end_time: 1759602379329
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: f366427fdd4d49a6b8f8c7bc367cf0ad
+run_name: burly-shad-459
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759602377298
+status: 3
+tags: []
+user_id: unknown

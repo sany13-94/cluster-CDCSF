@@ -25,7 +25,6 @@ import os
 import subprocess
 #from fedprox.mlflowtracker import setup_tracking
 from fedprox.features_visualization import StructuredFeatureVisualizer
-from fedprox.models import get_model
 #from fedprox.models import Generator
 FitConfig = Dict[str, Union[bool, float]]
 import mlflow
@@ -218,6 +217,7 @@ def main(cfg: DictConfig) -> None:
     #    num_classes=2  # For binary classification in breast cancer dataset
     #)
     # Create visualization directory
+    """
     viz_dir = os.path.join(os.getcwd(), 'visualizations')
     # Generate and save visualizations
     #save_path = os.path.join(viz_dir, 'initial_label_distribution.png')
@@ -228,7 +228,7 @@ def main(cfg: DictConfig) -> None:
     
     # Log distribution metrics
     #distribution_metrics = visualizer.compute_distribution_metrics(client_distributions)
-    
+    """
     if strategy=="gpaf":
       print(f'2: {valloaders[0]}')
       client_fn = gen_client_fn(
@@ -242,21 +242,7 @@ def main(cfg: DictConfig) -> None:
         strategy=strategy
        )
       
-    else:
-      # Create the ClientApp
-      client_fn = gen_client_fn(
-        num_clients=cfg.num_clients,
-        num_epochs=cfg.num_epochs,
-        trainloaders=trainloaders,
-        valloaders=valloaders,
-        num_rounds=cfg.num_rounds,
-        learning_rate=cfg.learning_rate,
-        model=get_model("swim")
-        ,
-        experiment_name=experiment_name
-        ,strategy=strategy
-       )
-
+    
     client = ClientApp(client_fn=client_fn)
     device = cfg.server_device
     def get_on_fit_config():
