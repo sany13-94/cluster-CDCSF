@@ -55,7 +55,7 @@ class FederatedClient(fl.client.NumPyClient):
         self.traindata = data
         self.validdata=validset
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print('device gpu {self.device}')
+        print(f'device gpu {self.device}')
         self.local_epochs=local_epochs
         self.client_id=client_id
         self.num_classes=9
@@ -107,7 +107,7 @@ class FederatedClient(fl.client.NumPyClient):
         for batch_idx, (data, target) in enumerate(self.validdata):
           print(f"evaluate dd Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")
           break  # J
-        loss, accuracy = test_gpaf(self.encoder,self.classifier, self.validdata, self.device)
+        loss, accuracy = test_gpaf(self.net, self.validdata, self.device)
       
         print(f'client id : {self.client_id} and valid accuracy is {accuracy} and valid loss is : {loss}')
         return float(loss), len(self.validdata), {"accuracy": float(accuracy),
@@ -445,7 +445,7 @@ class FederatedClient(fl.client.NumPyClient):
                 optimizer.zero_grad()
                 
                 # Forward pass - adjust based on your network output
-                outputs, _, _ = net(images)
+                h, _, outputs =  net(images)
                 loss = criterion(outputs, labels)
                 
                 loss.backward()

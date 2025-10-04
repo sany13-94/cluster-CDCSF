@@ -423,12 +423,10 @@ def train_one_epoch_gpaf(encoder,classifier,discriminator,trainloader, DEVICE,cl
     #return grads
 
 
-def test_gpaf(encoder,classifier, testloader,device,num_classes=9):
+def test_gpaf(net, testloader,device,num_classes=9):
         """Evaluate the network on the entire test set."""
-        encoder.to(device)
-        classifier.to(device)
-        encoder.eval()
-        classifier.eval()
+        net.to(device)
+       
 
         criterion = torch.nn.CrossEntropyLoss()
         total_loss = 0.0
@@ -453,8 +451,7 @@ def test_gpaf(encoder,classifier, testloader,device,num_classes=9):
                 print("Labels min/max:", labels.min().item(), labels.max().item())
                 """
                 # Forward pass
-                features = encoder(inputs)
-                outputs = classifier(features)
+                h, _, outputs = net(inputs)
 
                 # Compute loss
                 loss = criterion(outputs, labels)

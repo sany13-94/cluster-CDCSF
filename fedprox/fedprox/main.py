@@ -257,6 +257,7 @@ def main(cfg: DictConfig) -> None:
         return fit_config_fn
    
     # Start simulation
+    print(f'gpu number {cfg.client_resources.num_gpus}')
     server= ServerApp(server_fn=server_fn)
     history = run_simulation(
         client_app=client,
