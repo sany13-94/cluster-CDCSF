@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/2d899f2526414b21abbef9c266eb75ff/artifacts
+end_time: 1759583582695
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 2d899f2526414b21abbef9c266eb75ff
+run_name: bold-skunk-627
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759583549727
+status: 3
+tags: []
+user_id: unknown

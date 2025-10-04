@@ -96,10 +96,15 @@ class GPAFStrategy(FedAvg):
         self.accuracy_history = defaultdict(float)
         self._current_accuracies = {}
         # ... existing initialization ...
+        # ... existing initialization ...
         self.participated_clients = set()
         self.client_assignments = {}
         self.cluster_prototypes = {}
         self.last_round_participants = set()
+        # Virtual cluster configuration
+        self.use_virtual_cluster = True  # Enable virtual cluster for never-participated clients
+        self.virtual_cluster_id = -1  # Special ID for never-participated clients
+
       
 
 

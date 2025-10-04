@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/aedc27323552456a979cb09bb94c69ef/artifacts
+end_time: 1759584928432
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: aedc27323552456a979cb09bb94c69ef
+run_name: amusing-doe-611
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584912271
+status: 3
+tags: []
+user_id: unknown

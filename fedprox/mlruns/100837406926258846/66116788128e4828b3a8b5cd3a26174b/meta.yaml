@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/66116788128e4828b3a8b5cd3a26174b/artifacts
+end_time: 1759585116812
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 66116788128e4828b3a8b5cd3a26174b
+run_name: smiling-lark-80
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759585050857
+status: 3
+tags: []
+user_id: unknown

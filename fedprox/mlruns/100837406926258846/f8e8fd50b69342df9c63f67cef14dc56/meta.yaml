@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/f8e8fd50b69342df9c63f67cef14dc56/artifacts
+end_time: 1759584914927
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: f8e8fd50b69342df9c63f67cef14dc56
+run_name: bright-cat-252
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584914343
+status: 3
+tags: []
+user_id: unknown

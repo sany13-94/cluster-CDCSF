@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/941c9eaaac1f485daca2c9708e8148b8/artifacts
+end_time: 1759585119405
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 941c9eaaac1f485daca2c9708e8148b8
+run_name: glamorous-slug-825
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759585036078
+status: 3
+tags: []
+user_id: unknown

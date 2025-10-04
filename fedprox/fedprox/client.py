@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 import json
 from flwr.client import NumPyClient, Client,  NumPyClient
 
-  
+import time
 from flwr.common import Status, Code, parameters_to_ndarrays ,ConfigsRecord, MetricsRecord, ParametersRecord ,Context, ConfigRecord
 
 from  mlflow.tracking import MlflowClient
@@ -41,8 +41,8 @@ from fedprox.models import train_gpaf,test_gpaf,Encoder,Classifier,Discriminator
 from fedprox.dataset_preparation import compute_label_counts, compute_label_distribution
 from fedprox.features_visualization import extract_features_and_labels,StructuredFeatureVisualizer
 class FederatedClient(fl.client.NumPyClient):
-    def __init__(self, encoder: Encoder, classifier: Classifier, discriminator: Discriminator,
-    decoder,
+    def __init__(self, net: Model, 
+
      data,validset,
      local_epochs,
      client_id,
@@ -51,10 +51,8 @@ class FederatedClient(fl.client.NumPyClient):
       feature_visualizer
       ,
             device):
-        self.encoder = encoder
-        self.classifier = classifier
-        self.discriminator = discriminator 
-        self.decoder=decoder
+        self.net = net
+   
         self.traindata = data
         self.validdata=validset
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,18 +64,8 @@ class FederatedClient(fl.client.NumPyClient):
           print(f"dd Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")
           break  # J
         # Move models to device
-        self.encoder.to(self.device)
-        self.classifier.to(self.device)
-        self.discriminator.to(self.device)
-        #self.global_generator = GlobalGenerator(noise_dim=62, label_dim=2, hidden_dim=256  , output_dim=64)
-        self.domain_dim=32
-        self.global_generator = GlobalGenerator(noise_dim=62, label_dim=9,hidden_dim=256  , output_dim=64)
-        # Initialize server discriminator with GRL
-        # Initialize server discriminator with GRL
-        self.domain_discriminator = LocalDiscriminator(
-            feature_dim=64, 
-            num_domains=self.num_clients
-        ).to(self.device)
+        self.net.to(self.net)
+        
         self. mlflow= mlflow
         # Initialize optimizers
         self.optimizer_encoder = torch.optim.Adam(self.encoder.parameters())
@@ -202,153 +190,265 @@ class FederatedClient(fl.client.NumPyClient):
          "features": features_serialized,
             "labels": labels_serialized,
         }
-    
-    
-    
-    
-
-    def fit(self, ins: FitIns) -> FitRes:
-      try:
-        parameters = parameters_to_ndarrays(ins.parameters)
-        config = ins.config
-        round_number = config.get("server_round", -1)
-        simulate_delay = config.get("simulate_delay", False)
-        
-        print(f"🔥 DEBUG: Client {self.client_id} starting fit() for round {round_number}")
-        
-        # Send join timestamp
-        self.send_status(f"{self.server_url}/join", {
-            "client_id": self.client_id,
-            "round": round_number,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        start_time = time.time()
-        self.set_parameters(parameters)
-        
-        print(f"🔥 DEBUG: Client {self.client_id} starting training...")
-        self.train(self.net, self.traindata, self.client_id, epochs=self.local_epochs, simulate_delay=simulate_delay)
-        print(f"🔥 DEBUG: Client {self.client_id} completed training")
-        
-        # Send leave timestamp
-        self.send_status(f"{self.server_url}/leave", {
-            "client_id": self.client_id,
-            "round": round_number,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # === CRITICAL: Always extract and cache prototypes after training ===
-        print(f"🔥 DEBUG: Client {self.client_id} starting prototype extraction...")
-        self._extract_and_cache_prototypes_debug(round_number)
-        
-        training_duration = time.time() - start_time
-        status = Status(code=Code.OK, message="Success")
-        
-        return FitRes(
-            status=status,
-            parameters=self.get_parameters(config).parameters,
-            num_examples=len(self.traindata),
-            metrics={
-                "data_size": len(self.traindata),
+    def fit(self, parameters, config):
+        """Train local model and extract prototypes (NumPyClient interface)."""
+        try:
+            round_number = config.get("server_round", -1)
+            simulate_delay = config.get("simulate_delay", False)
+            
+            print(f"Client {self.client_id} starting fit() for round {round_number}")
+            
+          
+            
+            start_time = time.time()
+            
+            # Update model with global parameters
+            self.set_parameters(parameters)
+            
+            # Train the model
+            print(f"Client {self.client_id} starting training...")
+            self.train(self.net, self.traindata, self.client_id, epochs=self.local_epochs, simulate_delay=simulate_delay)
+            print(f"Client {self.client_id} completed training")
+            
+            # Send leave timestamp (if using timing server)
+            if self.server_url and hasattr(self, 'send_status'):
+                self.send_status(f"{self.server_url}/leave", {
+                    "client_id": self.client_id,
+                    "round": round_number,
+                    "timestamp": datetime.now().isoformat()
+                })
+            
+            # Extract and cache prototypes after training
+            print(f"Client {self.client_id} extracting prototypes...")
+            self._extract_and_cache_prototypes(round_number)
+            
+            training_duration = time.time() - start_time
+            
+            # Get updated parameters
+            updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
+            
+            # Return parameters and metrics (NumPyClient format)
+            num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
+            
+            return updated_parameters, num_examples, {
+                "data_size": num_examples,
                 "duration": training_duration,
             }
-        )
-      except Exception as e:
-        print(f"🔥 ERROR: Client {self.client_id} CRITICAL FAILURE during fit round {round_number}: {e}")
-        import traceback
-        traceback.print_exc()
-        raise e
-
-    def _extract_and_cache_prototypes(self):
-      """Extract and cache prototypes from current model state."""
-      self.net.eval()
-      class_embeddings = defaultdict(list)
-      class_counts = defaultdict(int)
-    
-      with torch.no_grad():
-        for batch in self.traindata:
-            images, labels = batch
-            images = images.to(self.device, dtype=torch.float32)
-            labels = labels.to(self.device, dtype=torch.long)
-            h, _, _ = self.net(images)
             
-            for i in range(labels.size(0)):
-                label = labels[i].item()
-                class_embeddings[label].append(h[i].cpu())
-                class_counts[label] += 1
-    
-      # Compute prototypes
-      prototypes = {}
-      for class_id in range(self.num_classes):
-        if class_id in class_embeddings:
-            stacked = torch.stack(class_embeddings[class_id])
-            prototypes[class_id] = stacked.mean(dim=0)
-        else:
-            # Use zero vector for missing classes
-            if len(class_embeddings) > 0:
-                # Get prototype dimension from existing embeddings
-                sample_embedding = next(iter(class_embeddings.values()))[0]
-                prototypes[class_id] = torch.zeros_like(sample_embedding)
-            else:
-                # Fallback: extract one sample to get dimensions
-                with torch.no_grad():
-                    sample_batch = next(iter(self.traindata))
-                    sample_images = sample_batch[0][:1].to(self.device, dtype=torch.float32)
-                    sample_h, _, _ = self.net(sample_images)
-                    prototypes[class_id] = torch.zeros_like(sample_h[0].cpu())
-    
-      # Cache prototypes and class counts
-      self.prototypes_from_last_round = prototypes
-      self.class_counts_from_last_round = dict(class_counts)  # Convert defaultdict to regular dict
-    
-      print(f"Client {self.client_id} successfully cached prototypes for {len(prototypes)} classes.")
-      print(f"Class counts: {dict(class_counts)}")
+        except Exception as e:
+            print(f"ERROR: Client {self.client_id} FAILURE during fit round {round_number}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise e
 
     def get_properties(self, ins: GetPropertiesIns) -> GetPropertiesRes:
-      """Send prototypes and class counts to server when requested."""
-      status = Status(code=Code.OK, message="Success")
-    
-      if ins.config.get("request") == "prototypes":
-        # Check if we have cached prototypes from previous training
-        if (hasattr(self, 'prototypes_from_last_round') and 
-            self.prototypes_from_last_round is not None and
-            hasattr(self, 'class_counts_from_last_round') and
-            self.class_counts_from_last_round is not None):
+        """Send prototypes to server when requested."""
+        
+        print(f"Client {self.client_id} - get_properties called")
+        
+        status = Status(code=Code.OK, message="Success")
+        
+        if ins.config.get("request") == "prototypes":
+            print(f"Client {self.client_id} - Server requesting prototypes")
             
-            try:
-                # Encode prototypes and class counts
-                prototypes_encoded = base64.b64encode(
-                    pickle.dumps(self.prototypes_from_last_round)
-                ).decode('utf-8')
-                
-                class_counts_encoded = base64.b64encode(
-                    pickle.dumps(self.class_counts_from_last_round)
-                ).decode('utf-8')
-                
-                print(f"Client {self.client_id}: Successfully sending prototypes and class counts to server.")
-                
-                return GetPropertiesRes(
-                    status=status,
-                    properties={
-                        "prototypes": prototypes_encoded,
-                        "class_counts": class_counts_encoded,
-                    }
-                )
-                
-            except Exception as e:
-                print(f"Client {self.client_id}: Error encoding prototypes: {e}")
-                return GetPropertiesRes(status=status, properties={})
-        else:
-            print(f"Client {self.client_id}: No prototypes available yet (hasn't participated in training).")
+            # Always try to load from disk first
+            if not (hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None):
+                print(f"Client {self.client_id} - Loading prototypes from disk...")
+                self._load_prototypes_from_disk()
+            
+            # Check if we have prototypes
+            has_prototypes = hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None
+            has_class_counts = hasattr(self, 'class_counts_from_last_round') and self.class_counts_from_last_round is not None
+            
+            print(f"Client {self.client_id} - has_prototypes: {has_prototypes}")
+            print(f"Client {self.client_id} - prototype file exists: {self.prototype_file.exists()}")
+            
+            if has_prototypes and has_class_counts:
+                try:
+                    print(f"Client {self.client_id} - Encoding prototypes...")
+                    
+                    prototypes_bytes = pickle.dumps(self.prototypes_from_last_round)
+                    class_counts_bytes = pickle.dumps(self.class_counts_from_last_round)
+                    
+                    prototypes_encoded = base64.b64encode(prototypes_bytes).decode('utf-8')
+                    class_counts_encoded = base64.b64encode(class_counts_bytes).decode('utf-8')
+                    
+                    print(f"Client {self.client_id} - Successfully encoded prototypes ({len(prototypes_bytes)} bytes)")
+                    
+                    return GetPropertiesRes(
+                        status=status,
+                        properties={
+                            "prototypes": prototypes_encoded,
+                            "class_counts": class_counts_encoded,
+                        }
+                    )
+                    
+                except Exception as e:
+                    print(f"ERROR: Client {self.client_id} - Encoding error: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # No prototypes available
+            print(f"Client {self.client_id} - No prototypes available")
             return GetPropertiesRes(status=status, properties={})
+        
+        # Default response
+        return GetPropertiesRes(
+            status=status, 
+            properties={"simulation_index": str(self.client_id)}
+        )
+
+    def _extract_and_cache_prototypes(self, round_number):
+        """Extract prototypes from trained model and cache them."""
+        print(f"Client {self.client_id} - Starting prototype extraction for round {round_number}")
+        
+        self.net.eval()
+        class_embeddings = defaultdict(list)
+        class_counts = defaultdict(int)
+        
+        total_samples = 0
+        
+        with torch.no_grad():
+            for batch_idx, batch in enumerate(self.traindata):
+                images, labels = batch
+                images = images.to(self.device, dtype=torch.float32)
+                labels = labels.to(self.device, dtype=torch.long)
+                
+                # Forward pass to get embeddings
+                # Adjust this based on your network architecture
+                # Assuming net returns (embeddings, logits, aux_output) or similar
+                h, _, _ = self.net(images)
+                
+                for i in range(labels.size(0)):
+                    label = labels[i].item()
+                    # Convert to CPU and numpy immediately
+                    class_embeddings[label].append(h[i].detach().cpu().numpy())
+                    class_counts[label] += 1
+                    total_samples += 1
+        
+        print(f"Client {self.client_id} - Processed {total_samples} samples")
+        print(f"Client {self.client_id} - Classes found: {list(class_embeddings.keys())}")
+        print(f"Client {self.client_id} - Class counts: {dict(class_counts)}")
+        
+        # Compute prototypes as NumPy arrays
+        prototypes = {}
+        embedding_dim = None
+        
+        for class_id in range(self.num_classes):
+            if class_id in class_embeddings:
+                # Stack as numpy arrays and compute mean
+                stacked = np.stack(class_embeddings[class_id])
+                prototypes[class_id] = stacked.mean(axis=0).astype(np.float32)
+                if embedding_dim is None:
+                    embedding_dim = prototypes[class_id].shape[0]
+            else:
+                # Handle missing classes with numpy zeros
+                if embedding_dim is not None:
+                    prototypes[class_id] = np.zeros(embedding_dim, dtype=np.float32)
+                elif len(class_embeddings) > 0:
+                    # Get dimension from any existing embedding
+                    sample_embedding = next(iter(class_embeddings.values()))[0]
+                    prototypes[class_id] = np.zeros_like(sample_embedding, dtype=np.float32)
+                    if embedding_dim is None:
+                        embedding_dim = sample_embedding.shape[0]
+                else:
+                    print(f"ERROR: Client {self.client_id} - No embeddings found!")
+                    return
+        
+        # Cache prototypes and class counts IN MEMORY
+        self.prototypes_from_last_round = prototypes
+        self.class_counts_from_last_round = dict(class_counts)
+        
+        # IMMEDIATELY save to disk for persistence
+        self._save_prototypes_to_disk()
+        
+        print(f"Client {self.client_id} - Successfully cached and saved prototypes for {len(prototypes)} classes")
+        print(f"Client {self.client_id} - Prototype shapes: {[(k, v.shape) for k, v in list(prototypes.items())[:3]]}")
+        
+        # Verify persistence
+        has_prototypes = hasattr(self, 'prototypes_from_last_round')
+        has_class_counts = hasattr(self, 'class_counts_from_last_round')
+        prototypes_not_none = has_prototypes and self.prototypes_from_last_round is not None
+        counts_not_none = has_class_counts and self.class_counts_from_last_round is not None
+        
+        print(f"Client {self.client_id} - POST-SAVE verification:")
+        print(f"  - has_prototypes: {has_prototypes}")
+        print(f"  - has_class_counts: {has_class_counts}")
+        print(f"  - prototypes_not_none: {prototypes_not_none}")
+        print(f"  - counts_not_none: {counts_not_none}")
+        print(f"  - prototype file exists: {self.prototype_file.exists()}")
+        print(f"  - counts file exists: {self.counts_file.exists()}")
+
+    def _save_prototypes_to_disk(self):
+        """Save prototypes and class counts to disk for persistence."""
+        try:
+            if hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None:
+                with open(self.prototype_file, 'wb') as f:
+                    pickle.dump(self.prototypes_from_last_round, f)
+                print(f"Client {self.client_id} - Saved prototypes to {self.prototype_file}")
+            
+            if hasattr(self, 'class_counts_from_last_round') and self.class_counts_from_last_round is not None:
+                with open(self.counts_file, 'wb') as f:
+                    pickle.dump(self.class_counts_from_last_round, f)
+                print(f"Client {self.client_id} - Saved class counts to {self.counts_file}")
+                
+        except Exception as e:
+            print(f"ERROR: Client {self.client_id} - Failed to save prototypes: {e}")
     
-      # Default response for other property requests
-      return GetPropertiesRes(
-        status=status, 
-        properties={"simulation_index": str(self.client_id)}
-    )
+    def _load_prototypes_from_disk(self):
+        """Load prototypes and class counts from disk."""
+        try:
+            if self.prototype_file.exists():
+                with open(self.prototype_file, 'rb') as f:
+                    self.prototypes_from_last_round = pickle.load(f)
+                print(f"Client {self.client_id} - Loaded prototypes from disk")
+            else:
+                self.prototypes_from_last_round = None
+                print(f"Client {self.client_id} - No existing prototypes on disk")
+            
+            if self.counts_file.exists():
+                with open(self.counts_file, 'rb') as f:
+                    self.class_counts_from_last_round = pickle.load(f)
+                print(f"Client {self.client_id} - Loaded class counts from disk")
+            else:
+                self.class_counts_from_last_round = None
+                print(f"Client {self.client_id} - No existing class counts on disk")
+                
+        except Exception as e:
+            print(f"ERROR: Client {self.client_id} - Failed to load prototypes: {e}")
+            self.prototypes_from_last_round = None
+            self.class_counts_from_last_round = None
 
-
+    def train(self, net, trainloader, client_id, epochs, simulate_delay=False):
+        """Train the network on the training set."""
+        net.train()
+        criterion = torch.nn.CrossEntropyLoss()
+        optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
+        
+        for epoch in range(epochs):
+            epoch_loss = 0.0
+            for batch_idx, (images, labels) in enumerate(trainloader):
+                images = images.to(self.device)
+                labels = labels.to(self.device)
+                
+                optimizer.zero_grad()
+                
+                # Forward pass - adjust based on your network output
+                outputs, _, _ = net(images)
+                loss = criterion(outputs, labels)
+                
+                loss.backward()
+                optimizer.step()
+                
+                epoch_loss += loss.item()
+            
+            print(f"Client {client_id} - Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/len(trainloader):.4f}")
+        
+        # Simulate delay if needed
+        if simulate_delay:
+            import random
+            delay = random.uniform(0.5, 2.0)
+            time.sleep(delay)
 
 def gen_client_fn(
     num_clients: int,

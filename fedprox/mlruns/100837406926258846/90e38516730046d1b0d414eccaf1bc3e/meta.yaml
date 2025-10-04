@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/90e38516730046d1b0d414eccaf1bc3e/artifacts
+end_time: 1759585037999
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 90e38516730046d1b0d414eccaf1bc3e
+run_name: learned-moose-647
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759585037423
+status: 3
+tags: []
+user_id: unknown

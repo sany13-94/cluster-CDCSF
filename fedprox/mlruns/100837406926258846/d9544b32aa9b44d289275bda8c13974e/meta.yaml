@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/d9544b32aa9b44d289275bda8c13974e/artifacts
+end_time: 1759585105255
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: d9544b32aa9b44d289275bda8c13974e
+run_name: nervous-ram-775
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759585039903
+status: 3
+tags: []
+user_id: unknown

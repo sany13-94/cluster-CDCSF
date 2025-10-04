@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/06a09ac5c0ab49379cae3d662fb9592f/artifacts
+end_time: 1759584032074
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 06a09ac5c0ab49379cae3d662fb9592f
+run_name: thundering-snail-235
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584031606
+status: 3
+tags: []
+user_id: unknown

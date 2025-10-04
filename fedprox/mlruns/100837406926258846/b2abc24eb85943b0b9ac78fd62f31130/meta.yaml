@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/b2abc24eb85943b0b9ac78fd62f31130/artifacts
+end_time: 1759583400431
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: b2abc24eb85943b0b9ac78fd62f31130
+run_name: judicious-fish-685
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759583399710
+status: 3
+tags: []
+user_id: unknown

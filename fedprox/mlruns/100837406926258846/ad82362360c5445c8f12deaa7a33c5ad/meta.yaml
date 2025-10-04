@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/ad82362360c5445c8f12deaa7a33c5ad/artifacts
+end_time: 1759584033958
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: ad82362360c5445c8f12deaa7a33c5ad
+run_name: rare-finch-231
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584033158
+status: 3
+tags: []
+user_id: unknown

@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/c5b6522e3cb744d899eb84ed09ce391b/artifacts
+end_time: 1759584060083
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: c5b6522e3cb744d899eb84ed09ce391b
+run_name: upbeat-pig-647
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584030347
+status: 3
+tags: []
+user_id: unknown

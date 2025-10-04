@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/7150366b373945c29b63f3ca84b826fb/artifacts
+end_time: 1759585038679
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 7150366b373945c29b63f3ca84b826fb
+run_name: awesome-midge-407
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759585038183
+status: 3
+tags: []
+user_id: unknown

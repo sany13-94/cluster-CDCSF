@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/808709587f4941148689bea8698ef54b/artifacts
+end_time: 1759584064714
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 808709587f4941148689bea8698ef54b
+run_name: treasured-trout-424
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584056328
+status: 3
+tags: []
+user_id: unknown

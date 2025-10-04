@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/69f45a8487604cb795bd663cccfee13e/artifacts
+end_time: 1759584929915
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 69f45a8487604cb795bd663cccfee13e
+run_name: enthused-boar-784
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584928958
+status: 3
+tags: []
+user_id: unknown

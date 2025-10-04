@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/078cb042f6d2477898254b905c7cb8e2/artifacts
+end_time: 1759583525601
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 078cb042f6d2477898254b905c7cb8e2
+run_name: silent-foal-853
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759583524711
+status: 3
+tags: []
+user_id: unknown

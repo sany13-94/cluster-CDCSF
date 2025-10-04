@@ -1,0 +1,50 @@
+[2025-10-04 13:09:21,470][flwr][DEBUG] - Pre-registering run with id 13149699873810918492
+[2025-10-04 13:09:21,472][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 13:09:21,472][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 13:09:21,478][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 13:09:21,479][flwr][DEBUG] - Registered 3 nodes
+[2025-10-04 13:09:21,479][flwr][DEBUG] - Supported backends: ['ray']
+[2025-10-04 13:09:21,482][flwr][DEBUG] - Initialising: RayBackend
+[2025-10-04 13:09:21,483][flwr][DEBUG] - Backend config: {'num_cpus': 2, 'num_gpus': 0.0, 'init_args': {'logging_level': 30, 'log_to_driver': True}, 'client_resources': {'num_cpus': 2, 'num_gpus': 0}, 'actor': {'tensorflow': 0}}
+[2025-10-04 13:09:21,704][flwr][INFO] - Starting Flower ServerApp, config: num_rounds=3, no round_timeout
+[2025-10-04 13:09:21,706][flwr][INFO] - 
+[2025-10-04 13:09:21,706][flwr][INFO] - [INIT]
+[2025-10-04 13:09:21,706][flwr][INFO] - Requesting initial parameters from one random client
+[2025-10-04 13:09:38,585][flwr][DEBUG] - Constructed ActorPool with: 1 actors
+[2025-10-04 13:09:38,586][flwr][DEBUG] - Using InMemoryState
+[2025-10-04 13:10:00,601][flwr][INFO] - Received initial parameters from one random client
+[2025-10-04 13:10:00,602][flwr][INFO] - Starting evaluation of initial global parameters
+[2025-10-04 13:10:00,602][flwr][INFO] - Evaluation returned no results (`None`)
+[2025-10-04 13:10:00,602][flwr][INFO] - 
+[2025-10-04 13:10:00,602][flwr][INFO] - [ROUND 1]
+[2025-10-04 13:10:00,602][flwr][ERROR] - ServerApp thread raised an exception: 'GPAFStrategy' object has no attribute 'use_virtual_cluster'
+[2025-10-04 13:10:00,615][flwr][ERROR] - Traceback (most recent call last):
+  File "/usr/local/lib/python3.12/dist-packages/flwr/simulation/run_simulation.py", line 283, in server_th_with_start_checks
+    updated_context = _run(
+                      ^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/run_serverapp.py", line 62, in run
+    server_app(grid=grid, context=context)
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server_app.py", line 166, in __call__
+    start_grid(
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/compat/app.py", line 90, in start_grid
+    hist = run_fl(
+           ^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server.py", line 492, in run_fl
+    hist, elapsed_time = server.fit(
+                         ^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server.py", line 115, in fit
+    res_fit = self.fit_round(
+              ^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/flwr/server/server.py", line 217, in fit_round
+    client_instructions = self.strategy.configure_fit(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/content/cluster-CDCSF/fedprox/fedprox/server.py", line 500, in configure_fit
+    if never_participated and self.use_virtual_cluster:
+                              ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'GPAFStrategy' object has no attribute 'use_virtual_cluster'
+
+[2025-10-04 13:10:00,615][flwr][DEBUG] - ServerApp finished running.
+[2025-10-04 13:10:00,615][flwr][DEBUG] - Triggered stop event for Simulation Engine.
+[2025-10-04 13:10:01,522][flwr][DEBUG] - Terminated 1 actors
+[2025-10-04 13:10:03,072][flwr][DEBUG] - Terminated RayBackend
+[2025-10-04 13:10:06,073][flwr][DEBUG] - Queue timeout. No context received.

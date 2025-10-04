@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/773f73b86d62470996f529b0c0161bc3/artifacts
+end_time: 1759584915577
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: 773f73b86d62470996f529b0c0161bc3
+run_name: legendary-carp-575
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759584915068
+status: 3
+tags: []
+user_id: unknown
