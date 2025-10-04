@@ -229,7 +229,14 @@ def main(cfg: DictConfig) -> None:
     # Log distribution metrics
     #distribution_metrics = visualizer.compute_distribution_metrics(client_distributions)
     """
+    CLIENT_RESOURCES = {
+    "num_cpus": 2, 
+    "num_gpus": 2.0 # Alloue une unité GPU à l'acteur Ray
+} 
+
     if strategy=="gpaf":
+      # à chaque client Ray dans la simulation.
+     
       print(f'2: {valloaders[0]}')
       client_fn = gen_client_fn(
         num_clients=cfg.num_clients,
@@ -267,6 +274,7 @@ def main(cfg: DictConfig) -> None:
             "num_cpus": cfg.client_resources.num_cpus,
             "num_gpus": cfg.client_resources.num_gpus,
         },
+         client_resources=CLIENT_RESOURCES,
        
       
     )
