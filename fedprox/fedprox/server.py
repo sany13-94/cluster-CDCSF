@@ -95,6 +95,11 @@ class GPAFStrategy(FedAvg):
         self.selection_counts = defaultdict(int)
         self.accuracy_history = defaultdict(float)
         self._current_accuracies = {}
+        # ... existing initialization ...
+        self.participated_clients = set()
+        self.client_assignments = {}
+        self.cluster_prototypes = {}
+        self.last_round_participants = set()
       
 
 
@@ -177,365 +182,67 @@ save_dir="feature_visualizations_gpaf"
       """Return the sample size and required number of clients for evaluation."""
       num_clients = client_manager.num_available()
       return max(int(num_clients * self.fraction_evaluate), self.min_evaluate_clients), self.min_available_clients
-   
-    def _initialize_clusters(self, all_prototypes):
-      num_clients = len(all_prototypes)
-      assert num_clients >= self.num_clusters, \
-        f"Need at least {self.num_clusters} clients to initialize clusters"
-
-      # Randomly sample clients (optional: sort by class diversity first)
-      sorted_protos = sorted(all_prototypes, key=lambda d: len(d), reverse=True)
-      selected_prototypes = sorted_protos[:self.num_clusters]
-
-      cluster_prototypes = {}
-      for cluster_id, proto_dict in enumerate(selected_prototypes):
-        cluster_prototypes[cluster_id] = {
-            class_id: proto.copy()
-            for class_id, proto in proto_dict.items()
-        }
-
-      print(f"[Init] Cluster prototypes initialized from top-{self.num_clusters} diverse clients")
-      return cluster_prototypes
-
-    def cosine_distance(self,a, b):
-      """Compute 1 - cosine similarity"""
-      if norm(a) == 0 or norm(b) == 0:
-        return 1.0  # Maximum distance if one is zero
-      return 1 - np.dot(a, b) / (norm(a) * norm(b))
-
-    def _e_step(self, all_prototypes, client_ids):
-      """Hard assignment of clients to clusters using cosine similarity"""
-      assignments = {}
-      for client_id, prototypes in zip(client_ids, all_prototypes):
-        min_dist = float('inf')
-        best_cluster = 0
-
-        for cluster_id in self.cluster_prototypes:
-            total_dist = 0
-            class_count = 0
-
-            for class_id in prototypes:
-                if class_id in self.cluster_prototypes[cluster_id]:
-                    client_proto = prototypes[class_id]
-                    cluster_proto = self.cluster_prototypes[cluster_id][class_id]
-
-                    # Use cosine distance instead of L2
-                    dist = self.cosine_distance(client_proto, cluster_proto)
-                    total_dist += dist
-                    class_count += 1
-
-            # Normalize distance by number of shared classes
-            if class_count > 0:
-                total_dist /= class_count
-
-            if total_dist < min_dist:
-                min_dist = total_dist
-                best_cluster = cluster_id
-
-        assignments[client_id] = best_cluster
-        print(f"Client {client_id} assigned to Cluster {best_cluster}")
-
-      return assignments
-
-    
-    def _m_step(self, all_prototypes, client_ids, assignments, class_counts_list):
-      cluster_weighted_sum = defaultdict(lambda: defaultdict(lambda: np.zeros_like(next(iter(all_prototypes[0].values())))))
-      cluster_class_counts = defaultdict(lambda: defaultdict(int))
-
-      for i, (client_id, prototypes) in enumerate(zip(client_ids, all_prototypes)):
-        cluster_id = assignments[client_id]
-        class_counts = class_counts_list[i]
-
-        for class_id, proto in prototypes.items():
-            weight = class_counts.get(class_id, 0)
-            if weight > 0:
-                cluster_weighted_sum[cluster_id][class_id] += weight * proto
-                cluster_class_counts[cluster_id][class_id] += weight
-
-      new_clusters = defaultdict(dict)
-      for cluster_id in cluster_weighted_sum:
-        for class_id in cluster_weighted_sum[cluster_id]:
-            count = cluster_class_counts[cluster_id][class_id]
-            if count > 0:
-                new_clusters[cluster_id][class_id] = cluster_weighted_sum[cluster_id][class_id] / count
-            else:
-                # Optional: fallback to random or default value if no samples
-                new_clusters[cluster_id][class_id] = np.random.randn(*proto.shape)
-
-      # Update global class counts
-      self.cluster_class_counts = cluster_class_counts  # Used later in configure_fit
-
-      return new_clusters
-
+ 
 
     def aggregate_fit(
-        self,
-        server_round: int,
-        results: List[Tuple[ClientProxy, flwr.common.FitRes]],
-                failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
-    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate results and update generator."""
-        print(f'results faillure {failures}')    
-        if not results:
-            return None, {}
+    self,
+    server_round: int,
+    results: List[Tuple[ClientProxy, FitRes]],
+    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+      """Aggregate with tracking of participants."""
+      print(f'results failure: {failures}')
+      if not results:
+        print("No clients returned results. Aggregation skipped.")
+        return None, {}
 
-        # Prepare config for next round
-        config = {
-            "server_round": server_round,
-            
-        }
-        # Load from the same file saved in the data pipeline
-        with open("client_domain_map.json", "r") as f:
-          client_domain_map = json.load(f)
-        clients_params_list=[]
-        print(f'server round is {server_round}')
-        num_samples_list=[]
-        self.client_prototypes = {}  # <-- ADD THIS LINE
-        client_ids=[]
-        all_prototypes=[]
-        class_counts_list=[]
-        client_id_map = {}  # flower_cid -> simulation_index
-        for client_proxy, fit_res in results:
-                client_id=client_proxy.cid
-                # Construct proper input
-                props_ins = GetPropertiesIns(config={})
-                props = client_proxy.get_properties(props_ins, timeout=10.0, group_id=None)
-                # Extract simulation index
-                sim_index = props.properties["simulation_index"]
-                
+      clients_params_list = []
+      num_samples_list = []
+      current_round_durations = []
+      current_participants = set()
 
-                #prototypes = fit_res.metrics.get("prototypes").encode('utf-8')
-                #prototypes = pickle.loads(base64.b64decode(prototypes))
-                print(f"Flower cid: {client_id}  ↔  Simulation client index: {sim_index}")
-                client_id_map[client_id] = sim_index
-                metrics = fit_res.metrics
-                # Make sure metrics are not empty and contain what you need
-                if "loss_sq_mean" in metrics and "data_size" in metrics:
-                    stat_util = metrics["data_size"] * metrics["loss_sq_mean"]
-                    self.stat_util[client_id] = stat_util
-                else:
-                    # fallback or warning
-                    self.stat_util[client_id] = 1.0  # neutral default
-
-                training_duration = metrics.get("duration")
-                if training_duration is not None:
-                  ema_alpha = 0.3
-                  if client_id not in self.training_times:
-                    self.training_times[client_id] = training_duration
-                  else:
-                    self.training_times[client_id] = (
-                        ema_alpha * training_duration +
-                        (1 - ema_alpha) * self.training_times[client_id]
-                    )
-                else:
-                  print(f"[Warning] Client {client_id} did not report 'duration' in fit_res.metrics.")
-
-                if "prototypes" not in metrics or "class_counts" not in metrics:
-                        print(f"[Warning] Client {client_proxy.cid} returned no prototype info. Skipping.")
-                        continue
-
-
-                client_parameters = parameters_to_ndarrays(fit_res.parameters)
-                clients_params_list.append(client_parameters)
-                all_prototypes.append(pickle.loads(base64.b64decode(fit_res.metrics["prototypes"])))
-                client_ids.append(client_id)
-                class_counts_list.append(pickle.loads(base64.b64decode(fit_res.metrics["class_counts"])))  # Dict[class_id] = count
-                with open("cid_to_sim_index.json", "w") as f:
-                  json.dump(client_id_map, f, indent=2)
-
-                """
-                if prototypes:
-                    self.client_prototypes[client_id] = prototypes
-                """
-                num_samples_list.append(fit_res.num_examples)
-        # Cluster clients using cosine similarity between prototype vectors
-        #aggregated_params = super().aggregate_fit(server_round, client_parameters, failures)
-        aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
-        #print(f' client ids {client_ids}')
-
+      for client_proxy, fit_res in results:
+        client_id = client_proxy.cid
+        metrics = fit_res.metrics
         
-        #print(f'prototypes: **** {prototypes} ****')
-        # Convert prototypes to numpy arrays
-        proto_arrays = []
-        for p in all_prototypes:
-            proto_arrays.append({
-                cls: np.array(proto) 
-                for cls, proto in p.items()
-            })
+        self.participated_clients.add(client_id)
+        current_participants.add(client_id)
         
-        # Initialize clusters if first round
-        # ROUND 1: Initialize clusters
-        if not self.client_assignments:
-          # First time clustering → initialize clusters
-          print("[Init] Performing first-time EM cluster initialization.")
-          self.cluster_prototypes = self._initialize_clusters(proto_arrays)
-        # 4. EM Algorithm
-        # E-step: Assign clients to clusters
-        assignments = self._e_step(proto_arrays, client_ids,)
-        # M-step: Update cluster prototypes
-        self.cluster_prototypes = self._m_step(proto_arrays, client_ids, assignments, class_counts_list)
+        if "duration" in metrics:
+            duration = metrics["duration"]
+            ema_alpha = 0.3
+            if client_id not in self.training_times:
+                self.training_times[client_id] = duration
+            else:
+                self.training_times[client_id] = (
+                    ema_alpha * duration +
+                    (1 - ema_alpha) * self.training_times[client_id]
+                )
+            current_round_durations.append(duration)
         
-        # 5. Update client assignments
-        self.client_assignments.update(assignments)
+        if "loss_sq_mean" in metrics and "data_size" in metrics:
+            stat_util = metrics["data_size"] * metrics["loss_sq_mean"]
+            self.stat_util[client_id] = stat_util
         
-        # 6. Prepare cluster prototypes for next round
-        for cluster_id in self.cluster_prototypes:
-            for class_id in self.cluster_prototypes[cluster_id]:
-                if isinstance(self.cluster_prototypes[cluster_id][class_id], np.ndarray):
-                    self.cluster_prototypes[cluster_id][class_id] = \
-                        self.cluster_prototypes[cluster_id][class_id].tolist()
+        clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
+        num_samples_list.append(fit_res.num_examples)
 
-          
-        # Visualize every 3 rounds
-        print("client_id_map =", client_id_map)
-        print("client_domain_map =", client_domain_map)
+      self.last_round_participants = current_participants
+      print(f"[Aggregate] Round {server_round} participants: {list(current_participants)}")
 
-        for flower_cid in client_id_map:
-            sim_index = client_id_map[flower_cid]
-            if str(sim_index) not in client_domain_map:
-              print(f"[ERROR] sim_index {sim_index} not found in client_domain_map")
-
-        if server_round % 2 == 0:
-            true_domain_map = {
-    flower_cid: client_domain_map[str(client_id_map[flower_cid])]
-    for flower_cid in client_id_map
-}
-            self._visualize_clusters(all_prototypes, client_ids, server_round, true_domain_map=true_domain_map)
-        
-    
-        # 7. Build per-client config: map cid → cluster-level prototypes
-        cluster_proto_map = {}  # Flower client ID -> {class_id: global_proto}
-        print("[DEBUG] Assigned clients:")
-        print(list(self.client_assignments.keys()))
-        
-        for cid in client_ids:
-          cluster_id = self.client_assignments[cid]
-          cluster_protos = self.cluster_prototypes[cluster_id]
-
-          # Convert to list if necessary (ensure JSON serializable)
-          serializable_protos = {
-            str(cls): proto.tolist() if isinstance(proto, np.ndarray) else proto
-            for cls, proto in cluster_protos.items()
-          }
-
-          cluster_proto_map[cid] = {
-          "cluster_id": cluster_id,
-          "cluster_prototypes": serializable_protos,
-          }
-
-        # OPTIONAL: Save for debugging
-        with open("client_cluster_prototypes.json", "w") as f:
-          json.dump(cluster_proto_map, f, indent=2)
-        
-
-        try:
-            r = requests.post(f"{self.server_url}/save_logs")
-            print("[Server] Log save status:", r.json())
-        except Exception as e:
-            print("[Server] Failed to save logs:", e)
-        return ndarrays_to_parameters(aggregated_params),config
-    
-
-
-
-    def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
-      # 1. Flatten prototypes: one vector per client
-      prototype_matrix = []
-      for client_prototypes in prototypes:
-        client_proto = np.mean(list(client_prototypes.values()), axis=0)
-        prototype_matrix.append(client_proto)
-      prototype_matrix = np.array(prototype_matrix)
-
-      # 2. t-SNE projection
-      n_clients = len(prototype_matrix)
-      perplexity = min(30, max(1, n_clients - 1))
-      tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42)
-      projections = tsne.fit_transform(prototype_matrix)
-
-      # 3. Cluster assignments (predicted by your method)
-      cluster_assignments = [self.client_assignments.get(cid, -1) for cid in client_ids]
-      unique_clusters = sorted(set(cluster_assignments))
-      num_clusters = len(unique_clusters)
-
-      # 4. Color map setup for clusters
-      base_cmap = cm.get_cmap("tab20", num_clusters)
-      colors = [base_cmap(i) for i in range(num_clusters)]
-      color_map = ListedColormap(colors)
-      cluster_id_to_color_index = {cluster_id: idx for idx, cluster_id in enumerate(unique_clusters)}
-      color_indices = [cluster_id_to_color_index[cid] for cid in cluster_assignments]
-
-      # 5. Marker setup for true domains
-      markers = ['o', 's', '^', 'D', 'P', 'X']
-      domain_to_marker = {}
-      if true_domain_map:
-        unique_domains = sorted(set(true_domain_map.get(cid, "unknown") for cid in client_ids))
-        domain_to_marker = {dom: markers[i % len(markers)] for i, dom in enumerate(unique_domains)}
-
-      # 6. Begin plotting
-      plt.figure(figsize=(12, 8))
-
-      for i, (x, y) in enumerate(projections):
-        client_id = client_ids[i]
-        cluster_id = cluster_assignments[i]
-        color_index = cluster_id_to_color_index[cluster_id]
-
-        if true_domain_map:
-            domain = true_domain_map.get(client_id, "unknown")
-            marker = domain_to_marker.get(domain, 'o')
+      if current_round_durations:
+        current_avg_duration = sum(current_round_durations) / len(current_round_durations)
+        ewma_decay = 0.1
+        if self.global_T_max == 0.0:
+            self.global_T_max = current_avg_duration
         else:
-            domain = "unknown"
-            marker = 'o'
+            self.global_T_max = (1 - ewma_decay) * self.global_T_max + ewma_decay * current_avg_duration
 
-        plt.scatter(
-            x, y,
-            c=[colors[color_index]],
-            marker=marker,
-            edgecolor='k',
-            s=100,
-            alpha=0.8
-        )
-        plt.text(x, y, str(client_id), fontsize=7, ha='center', va='bottom')
-
-      # 7. Legends
-      # Cluster legend (colors)
-      cluster_handles = [
-        plt.Line2D([0], [0], marker='o', color='w', label=f'Cluster {cid}',
-                   markerfacecolor=colors[idx], markersize=8)
-        for cid, idx in cluster_id_to_color_index.items()
-    ]
-
-      # Domain legend (markers)
-      domain_handles = []
-      if true_domain_map:
-        for dom, marker in domain_to_marker.items():
-            domain_handles.append(
-                plt.Line2D([0], [0], marker=marker, color='k', label=f'Domain: {dom}',
-                           markerfacecolor='gray', markersize=8, linestyle='None')
-            )
-
-      plt.legend(handles=cluster_handles + domain_handles, title="Cluster / Domain", bbox_to_anchor=(1.05, 1), loc='upper left')
-
-      # 8. Plot aesthetics
-      plt.title(f"Client Prototypes (Round {server_round})\nColors = Cluster ID, Shapes = True Domain, Labels = Client ID")
-      plt.xlabel("t-SNE 1")
-      plt.ylabel("t-SNE 2")
-      plt.tight_layout()
-      plt.savefig(f"clusters_round_{server_round}.png", dpi=300, bbox_inches='tight')
-      plt.show()
-      plt.close()
-
-      # 9. Optional: Clustering quality metrics
-      if true_domain_map:
-        predicted_clusters = cluster_assignments
-        true_domains = [true_domain_map.get(cid, -1) for cid in client_ids]
-
-        ari = adjusted_rand_score(true_domains, predicted_clusters)
-        nmi = normalized_mutual_info_score(true_domains, predicted_clusters)
-
-        print(f"Clustering Quality: ARI = {ari:.3f}, NMI = {nmi:.3f}")
+      aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
+    
+      return ndarrays_to_parameters(aggregated_params), {}
 
 
-   
     def _fedavg_parameters(
         self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
     ) -> List[np.ndarray]:
@@ -614,49 +321,7 @@ save_dir="feature_visualizations_gpaf"
             
         return None, {"accuracy": aggregated_accuracy}
    
-    def _load_client_logs(self, server_round):
-        """Load client training logs from heartbeat server"""
-        try:
-            # Load training time data from your heartbeat logs
-            log_file = f"client_logs_round_{server_round-1}.json"
-            if os.path.exists(log_file):
-                with open(log_file, 'r') as f:
-                    logs = json.load(f)
-                return logs
-            return {}
-        except Exception as e:
-            print(f"[Warning] Could not load client logs: {e}")
-            return {}
-   
-
-    def _update_client_targets(self, server_round: int):
-        if not self._current_accuracies:
-            print(f"[Fairness Update] Round {server_round}: No current accuracies from previous round's evaluation to update targets.")
-            return
-
-        total_acc = sum(self._current_accuracies.values())
-        num_evaluated_clients = len(self._current_accuracies)
-        
-        if num_evaluated_clients == 0:
-            print(f"[Fairness Update] Round {server_round}: No evaluated clients, cannot compute Avg_Acc_Global for target update.")
-            self._current_accuracies = {}
-            return
-            
-        Avg_Acc_Global = total_acc / num_evaluated_clients
-        print(f"[Fairness Update] Round {server_round}: Global Average Accuracy (prev round): {Avg_Acc_Global:.4f}")
-
-        for client_id, current_acc in self._current_accuracies.items():
-            current_target = self.client_targets[client_id]
-
-            if current_acc < Avg_Acc_Global - self.acc_drop_threshold:
-                self.client_targets[client_id] = min(self.max_target_selections, current_target + 1)
-                print(f"[Fairness Update] Client {client_id}: Acc {current_acc:.4f} < Avg_Acc {Avg_Acc_Global:.4f}. Target increased from {current_target} to {self.client_targets[client_id]}")
-            else:
-                print(f"[Fairness Update] Client {client_id}: Acc {current_acc:.4f} >= Avg_Acc {Avg_Acc_Global:.4f}. Target remains {current_target}")
-
-        self._current_accuracies = {}
-
-    
+  
     def _compute_reliability_scores(self, client_ids: List[str]) -> Dict[str, float]:
         reliability_scores = {}
         
@@ -953,7 +618,138 @@ save_dir="feature_visualizations_gpaf"
 
      return instructions
 
-  
+    def _initialize_clusters(self, all_prototypes):
+      """Initialize clusters from most diverse clients."""
+      num_clients = len(all_prototypes)
+      assert num_clients >= self.num_clusters, \
+        f"Need at least {self.num_clusters} clients, got {num_clients}"
+
+      client_diversity = []
+      for i, proto_dict in enumerate(all_prototypes):
+        diversity = len([v for v in proto_dict.values() if np.linalg.norm(v) > 0])
+        client_diversity.append((i, diversity))
+    
+      client_diversity.sort(key=lambda x: x[1], reverse=True)
+      selected_indices = [idx for idx, _ in client_diversity[:self.num_clusters]]
+
+      cluster_prototypes = {}
+      for cluster_id, client_idx in enumerate(selected_indices):
+        proto_dict = all_prototypes[client_idx]
+        cluster_prototypes[cluster_id] = {}
+        
+        for class_id, proto in proto_dict.items():
+            if hasattr(proto, 'numpy'):
+                proto_np = proto.numpy()
+            elif hasattr(proto, 'detach'):
+                proto_np = proto.detach().cpu().numpy()
+            else:
+                proto_np = np.array(proto)
+            
+            cluster_prototypes[cluster_id][class_id] = proto_np.astype(np.float32).copy()
+
+      print(f"[Init] Initialized {self.num_clusters} clusters")
+      return cluster_prototypes
+
+    def _e_step(self, all_prototypes, client_ids):
+      """E-step: Assign clients to clusters."""
+      assignments = {}
+    
+      print(f"[E-step] Assigning {len(client_ids)} clients to {len(self.cluster_prototypes)} clusters")
+    
+      for client_id, prototypes in zip(client_ids, all_prototypes):
+        min_dist = float('inf')
+        best_cluster = 0
+
+        for cluster_id in self.cluster_prototypes:
+            total_dist = 0
+            shared_classes = 0
+
+            for class_id in prototypes:
+                if class_id in self.cluster_prototypes[cluster_id]:
+                    client_proto = np.array(prototypes[class_id])
+                    cluster_proto = np.array(self.cluster_prototypes[cluster_id][class_id])
+                    
+                    dist = self.cosine_distance(client_proto, cluster_proto)
+                    total_dist += dist
+                    shared_classes += 1
+
+            avg_dist = total_dist / shared_classes if shared_classes > 0 else 1.0
+
+            if avg_dist < min_dist:
+                min_dist = avg_dist
+                best_cluster = cluster_id
+
+        assignments[client_id] = best_cluster
+
+      cluster_counts = defaultdict(int)
+      for cluster_id in assignments.values():
+        cluster_counts[cluster_id] += 1
+    
+      print(f"[E-step] Assignment summary: {dict(cluster_counts)}")
+      return assignments
+
+    def cosine_distance(self, a, b):
+      """Compute 1 - cosine similarity."""
+      norm_a = np.linalg.norm(a)
+      norm_b = np.linalg.norm(b)
+    
+      if norm_a == 0 or norm_b == 0:
+        return 1.0
+    
+      return 1 - np.dot(a, b) / (norm_a * norm_b)
+
+    def _m_step(self, all_prototypes, client_ids, assignments, class_counts_list):
+      """M-step: Update cluster prototypes."""
+      sample_proto = None
+      for prototypes in all_prototypes:
+        if prototypes:
+            sample_proto = next(iter(prototypes.values()))
+            break
+    
+      if sample_proto is None:
+        return defaultdict(dict)
+    
+      if hasattr(sample_proto, 'numpy'):
+        sample_proto = sample_proto.numpy()
+      elif hasattr(sample_proto, 'detach'):
+        sample_proto = sample_proto.detach().cpu().numpy()
+    
+      cluster_weighted_sum = defaultdict(lambda: defaultdict(lambda: np.zeros(sample_proto.shape, dtype=np.float32)))
+      cluster_class_counts = defaultdict(lambda: defaultdict(int))
+
+      for i, (client_id, prototypes) in enumerate(zip(client_ids, all_prototypes)):
+        cluster_id = assignments[client_id]
+        class_counts = class_counts_list[i]
+
+        for class_id, proto in prototypes.items():
+            weight = class_counts.get(class_id, 0)
+            if weight > 0:
+                if hasattr(proto, 'numpy'):
+                    proto_np = proto.numpy()
+                elif hasattr(proto, 'detach'):
+                    proto_np = proto.detach().cpu().numpy()
+                else:
+                    proto_np = np.array(proto)
+                
+                proto_np = proto_np.astype(np.float32)
+                weighted_proto = weight * proto_np
+                cluster_weighted_sum[cluster_id][class_id] += weighted_proto
+                cluster_class_counts[cluster_id][class_id] += weight
+
+      new_clusters = defaultdict(dict)
+      for cluster_id in range(self.num_clusters):
+        if cluster_id in cluster_weighted_sum:
+            for class_id in cluster_weighted_sum[cluster_id]:
+                count = cluster_class_counts[cluster_id][class_id]
+                if count > 0:
+                    new_clusters[cluster_id][class_id] = cluster_weighted_sum[cluster_id][class_id] / count
+                else:
+                    new_clusters[cluster_id][class_id] = np.random.randn(*sample_proto.shape).astype(np.float32)
+
+      self.cluster_class_counts = cluster_class_counts
+      print(f"[M-step] Updated {len(new_clusters)} clusters")
+      return new_clusters
+
     def configure_evaluate(
       self, server_round: int, parameters: Parameters, client_manager: ClientManager
 ) -> List[Tuple[ClientProxy, EvaluateIns]]:
