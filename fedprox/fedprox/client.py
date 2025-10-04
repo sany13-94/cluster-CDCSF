@@ -7,6 +7,7 @@ import flwr as fl
 import numpy as np
 import torch
 import copy
+from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 import torch.nn.functional as F
@@ -54,6 +55,7 @@ class FederatedClient(fl.client.NumPyClient):
         self.traindata = data
         self.validdata=validset
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print('device gpu {self.device}')
         self.local_epochs=local_epochs
         self.client_id=client_id
         self.num_classes=9
@@ -72,7 +74,20 @@ class FederatedClient(fl.client.NumPyClient):
         # Initialize dictionaries to store features and labels
         self.client_features = {}  # Add this
         self.client_labels = {}    # Add this
-       
+        
+        # Prototype storage setup
+        self.prototype_dir = Path("prototype_cache")
+        self.prototype_dir.mkdir(exist_ok=True)
+        self.prototype_file = self.prototype_dir / f"client_{self.client_id}_prototypes.pkl"
+        self.counts_file = self.prototype_dir / f"client_{self.client_id}_counts.pkl"
+        
+        # Initialize prototype storage
+        self.prototypes_from_last_round = None
+        self.class_counts_from_last_round = None
+        
+        # Load existing prototypes if available
+        self._load_prototypes_from_disk()
+        
     def set_parameters(self, parameters):
         """Set model parameters from a list of NumPy arrays."""
         params_dict = zip(self.net.state_dict().keys(), parameters)
@@ -416,6 +431,7 @@ class FederatedClient(fl.client.NumPyClient):
 
     def train(self, net, trainloader, client_id, epochs, simulate_delay=False):
         """Train the network on the training set."""
+
         net.train()
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
