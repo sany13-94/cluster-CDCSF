@@ -2,7 +2,6 @@
 """Functions for dataset download and processing."""
 
 from typing import List, Optional, Tuple,Dict
-
 import numpy as np
 import torch
 import torchvision.transforms as transforms
@@ -10,7 +9,17 @@ from torch.utils.data import ConcatDataset, Dataset, Subset, random_split
 from torchvision.datasets import MNIST
 import os
 import torch.utils.data as data
-
+from torch.utils.data import random_split, DataLoader, ConcatDataset
+import torch
+from torch.utils.data import DataLoader, random_split, ConcatDataset
+import math
+from typing import List, Tuple
+import torch
+from torch.utils.data import DataLoader, random_split
+from typing import List, Tuple
+import math
+from collections import defaultdict
+import medmnist
 def  normalize_tensor(x: torch.Tensor):
     
         return x / 255.0 if x.max() > 1.0 else x
@@ -48,127 +57,7 @@ def compute_label_counts(dataset):
     label_counts = Counter(labels)  # Count occurrences of each label
     return label_counts
 
-def compute_label_distribution(labels: torch.Tensor, num_classes: int) -> Dict[int, float]:
-    """Compute the label distribution for a given set of labels."""
-    label_counts = torch.bincount(labels, minlength=num_classes).float()
-    label_probs = label_counts / label_counts.sum()
-    return {label: label_probs[label].item() for label in range(num_classes)}
 
-
-
-
-def create_domain_shifted_loaders(
-   root_path,
-    num_clients: int,
-    batch_size: int
-,
-    transform
-    ,domain_shift,
-    balance=False,
-    iid=True,seed=42
-) -> Tuple[List[DataLoader], List[DataLoader]]:
-   """Create domain-shifted dataloaders for each client."""
-    
-   root_path=os.getcwd()
-   der = DataSplitManager(
-        num_clients=num_clients,
-        batch_size=batch_size,
-        seed=42,
-        domain_shift=True
-    )
-   try:
-    datasets = []
-    client_validsets = []
-    New_split=False
-    train_splits, val_splits= der.load_splits()
-    print(f"Loading existing splits for domain shift data... {len(train_splits)}")
-    #for client_id in range(num_clients):
-    for client_id , (train_split, val_split) in enumerate(zip(train_splits, val_splits)):
-        print(f'== client id for sanaa {client_id}')
-        # Apply domain shift to training data
-        shifted_trainset=BreastMnistDataset(root_path,prefix='train',transform=transform,client_id=client_id,
-            num_clients=num_clients,domain_shifti=domain_shift)
-        # Create subsets using saved splits
-        shifted_trainset = Subset(shifted_trainset, train_split['indices'])
-        
-        print(f' train shape domain shift {len(shifted_trainset)}')
-
-        shifted_valset=BreastMnistDataset(root_path,prefix='valid',transform=transform,client_id=client_id,
-            num_clients=num_clients,domain_shifti=domain_shift)
-        shifted_valset = Subset(shifted_valset, val_split['indices'])
-
-        #test_subset = Subset(testset, test_splits['indices'])
-        train_indices = train_split['indices']
-        val_indices = val_split['indices']
-        datasets.append(shifted_trainset)
-        client_validsets.append(shifted_valset)
-        # Create and verify subsets
-          
-      
-        print(f"\nClient {client_id} data points:")
-        print(f"Last 5 training indices: {train_indices[5:]}")
-        print(f"Number of training samples: {len(train_indices)}")
-   except Exception as e:
-       
-        print(f"No existing splits found. Creating new splits with domain shift... {e}")
-        # Create new splits
-        New_split=True
-        for client_id in range(num_clients):
-            print(f' client id for sanaa {client_id}')
-            shifted_trainset = BreastMnistDataset(
-                root_path,
-                prefix='train',
-                transform=transform,
-                client_id=client_id,
-                num_clients=num_clients,
-                domain_shifti=domain_shift
-            )
-            
-            shifted_valset = BreastMnistDataset(
-                root_path,
-                prefix='valid',
-                transform=transform,
-                client_id=client_id,
-                num_clients=num_clients,
-                domain_shifti=domain_shift
-            )
-        if balance:
-              shifted_trainset = _balance_classes(shifted_trainset, seed)
-
-        partition_size = int(len(shifted_trainset) / num_clients)
-        print(f' par {partition_size} and len of train is {len(shifted_trainset)}')
-        lengths = [partition_size] * num_clients
-        partition_size_valid = int(len(shifted_valset) / num_clients)
-        lengths_valid = [partition_size_valid] * num_clients
-    
-        if iid:
-              client_validsets = random_split(shifted_valset, lengths_valid, torch.Generator().manual_seed(seed))
-
-              datasets = random_split(shifted_trainset, lengths, torch.Generator().manual_seed(seed))
-        else:
-
-          #drishlet distribution
-          # Non-IID splitting using Dirichlet distribution
-          alpha=0.5
-          min_size_ratio = 0.1  # Ensures each partition has at least 10% of average size
-          datasets = _dirichlet_split(
-                    shifted_trainset,
-                    num_clients,
-                    alpha=alpha,
-                    min_size_ratio = 0.1,  # Ensures each partition has at least 10% of average size,
-                    seed=seed
-                )
-          print(f'dataset drichlet {datasets[0]}')      
-          partition_size_valid = int(len(shifted_valset) / num_clients)
-          lengths_valid = [partition_size_valid] * num_clients
-          client_validsets = random_split(shifted_valset, lengths_valid, 
-                                              torch.Generator().manual_seed(seed))
-
-   testset=BreastMnistDataset(root_path,prefix='test',transform=transform)    
-         
-
-    
-   return datasets, client_validsets , testset,New_split
 
 #pathmnist dataset
 class SameModalityDomainShift:
@@ -259,26 +148,6 @@ class DomainShiftedPathMNIST(torch.utils.data.Dataset):
         img = self.shift.apply_transform(img)
         return img, label
 
-
-from torch.utils.data import random_split, DataLoader, ConcatDataset
-
-import torch
-from torch.utils.data import DataLoader, random_split, ConcatDataset
-import math
-from typing import List, Tuple
-
-# Assuming LazyPathMNIST, build_transform, and DomainShiftedPathMNIST
-# are defined elsewhere and available in scope.
-# Note: Since the number of clients k might not be perfectly divisible by d,
-# we will distribute the shifts as evenly as possible.
-
-import torch
-from torch.utils.data import DataLoader, random_split
-from typing import List, Tuple
-import math
-from collections import defaultdict
-import medmnist
-# Assuming LazyPathMNIST, build_transform, and DomainShiftedPathMNIST are defined.
 
 class LazyPathMNIST(Dataset):
     
@@ -427,18 +296,6 @@ def make_pathmnist_clients_final(
     val_loaders.append(
         DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
     )
-
-    # 5. Define Global Test Loader
-    # The original ds_test (all of it) is the dedicated global test set.
-    """
-    global_test_loader = DataLoader(
-        ds_test, 
-        batch_size=batch_size, 
-        shuffle=False, 
-        pin_memory=True, 
-        num_workers=4
-    )
-    """
 
     return train_loaders, val_loaders
 

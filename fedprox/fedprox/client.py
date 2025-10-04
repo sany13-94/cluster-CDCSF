@@ -37,12 +37,11 @@ from flwr.common import (
      GetPropertiesIns, GetPropertiesRes
 )
 import os
-from fedprox.models import train_gpaf,test_gpaf,Encoder,Classifier,Discriminator,GlobalGenerator,LocalDiscriminator,init_net,train_moon,test_moon,Decoder,save_client_model,load_client_model
+from fedprox.models import train_gpaf,test_gpaf,Encoder,Classifier,Discriminator,ModelCDCSF,train_moon,test_moon,save_client_model,load_client_model
 from fedprox.dataset_preparation import compute_label_counts, compute_label_distribution
 from fedprox.features_visualization import extract_features_and_labels,StructuredFeatureVisualizer
 class FederatedClient(fl.client.NumPyClient):
-    def __init__(self, net: Model, 
-
+    def __init__(self, net: ModelCDCSF, 
      data,validset,
      local_epochs,
      client_id,
@@ -68,78 +67,21 @@ class FederatedClient(fl.client.NumPyClient):
         
         self. mlflow= mlflow
         # Initialize optimizers
-        self.optimizer_encoder = torch.optim.Adam(self.encoder.parameters())
-        self.optimizer_classifier = torch.optim.Adam(self.classifier.parameters())
-        self.optimizer_discriminator = torch.optim.Adam(self.discriminator.parameters())
+        self.optimizer= torch.optim.Adam(self.net.parameters())
         self.run_id=run_id
         self.feature_visualizer=feature_visualizer
         # Initialize dictionaries to store features and labels
         self.client_features = {}  # Add this
         self.client_labels = {}    # Add this
-        # Generator will be updated from server state
-        #self.generator = None
-    
-    def get_parameters(self,config: Dict[str, Scalar] = None) -> List[np.ndarray]:
-      """Return the parameters of the current encoder and classifier to the server.
-        Exclude 'num_batches_tracked' from the parameters.
-      """
-      #print(f'Classifier state from server: {self.classifier.state_dict().keys()}')
+       
+    def set_parameters(self, parameters):
+        """Set model parameters from a list of NumPy arrays."""
+        params_dict = zip(self.net.state_dict().keys(), parameters)
+        state_dict = {k: torch.tensor(v) for k, v in params_dict}
+        self.net.load_state_dict(state_dict, strict=True)
 
-      # Extract parameters and exclude 'num_batches_tracked'
-      encoder_params = [val.cpu().numpy() for key, val in self.encoder.state_dict().items() if "num_batches_tracked" not in key]
-      classifier_params = [val.cpu().numpy() for key, val in self.classifier.state_dict().items() if "num_batches_tracked" not in key]
-      discriminator_params = [val.cpu().numpy() for key, val in self.domain_discriminator.state_dict().items() if "num_batches_tracked" not in key]
-      parameters = encoder_params + classifier_params + discriminator_params
-
-      #print(f' send client para format {type(parameters)}')
-
-      return parameters
-    #three run
-    def set_parameters(self, parameters: List[np.ndarray]) -> None:
-      """Set the parameters of the encoder and classifier.
-      Exclude 'num_batches_tracked' from the parameters.
-      """
- 
-      num_encoder_params =len([key for key in self.encoder.state_dict().keys() if "num_batches_tracked" not in key])
-
-      num_classifier_params = len([key for key in self.classifier.state_dict().keys() if "num_batches_tracked" not in key])
-      num_discriminator_params = len([key for key in self.domain_discriminator.state_dict().keys() if "num_batches_tracked" not in key])
-        
-      # Extract encoder parameters
-      encoder_params = parameters[:num_encoder_params]
-      #print(f'encoder_params {encoder_params}')
-      encoder_param_names = [key for key in self.encoder.state_dict().keys() if "num_batches_tracked" not in key]    
-      params_dict_en = dict(zip(encoder_param_names, encoder_params))
-      # Update encoder parameters
-      encoder_state = OrderedDict(
-        {k: torch.tensor(v) for k, v in params_dict_en.items()}
-      )
-      self.encoder.load_state_dict(encoder_state, strict=True)
-      
-      
-      # Extract classifier parameters
-      classifier_params = parameters[num_encoder_params : num_encoder_params + num_classifier_params]
-      classifier_param_names = list(self.classifier.state_dict().keys())
-      params_dict_cls = dict(zip(classifier_param_names, classifier_params))
-      #print(f'classifier_params {classifier_params}')
-      # Update classifier parameters
-      classifier_state = OrderedDict(
-          {k: torch.tensor(v) for k, v in params_dict_cls.items()}
-      )
-
-      self.classifier.load_state_dict(classifier_state, strict=False)
-
-      discriminator_params = parameters[num_encoder_params + num_classifier_params : num_encoder_params + num_classifier_params + num_discriminator_params]
-
-      # Load discriminator
-      discriminator_param_names = [key for key in self.domain_discriminator.state_dict().keys() if "num_batches_tracked" not in key]
-      params_dict_disc = dict(zip(discriminator_param_names, discriminator_params))
-      discriminator_state = OrderedDict({k: torch.tensor(v) for k, v in params_dict_disc.items()})
-      self.domain_discriminator.load_state_dict(discriminator_state, strict=True)
-      
-      
-      print(f'Classifier parameters updated')
-
+    def get_parameters(self, config=None):
+      return [val.cpu().numpy() for _, val in self.net.state_dict().items()]
 
     #second and call set_para  
     def evaluate(self, parameters: NDArrays, config: Dict[str, Scalar]
@@ -152,43 +94,9 @@ class FederatedClient(fl.client.NumPyClient):
           print(f"evaluate dd Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")
           break  # J
         loss, accuracy = test_gpaf(self.encoder,self.classifier, self.validdata, self.device)
-        #get the round in config
-        # Log evaluation metrics using mlflow directly
-
-        # Extract features and labels
-        val_features, val_labels = extract_features_and_labels(
-        self.encoder,
-        self.validdata,
-        self.device
-           )
-    
-        if val_features is not None:
-          self.client_features[self.client_id] = val_features
-          self.client_labels[self.client_id] = val_labels
-
-        with self.mlflow.start_run(run_id=self.run_id):  
-            print(f' config client {config.get("server_round")}')
-            self.mlflow.log_metrics({
-                f"client_{self.client_id}/eval_loss": float(loss),
-                f"client_{self.client_id}/eval_accuracy": float(accuracy),
-                #f"client_round":float(round_number),
-               # f"client_{self.client_id}/eval_samples": samples
-            }, step=config.get("server_round"))
-            # Also log in format for easier plotting
-        
-        #visualize all clients features per class
-        features_np = val_features.detach().cpu().numpy()
-        labels_np = val_labels.detach().cpu().numpy().reshape(-1)  # Ensure 1D array
-        # In client:
-        features_serialized = base64.b64encode(pickle.dumps(features_np)).decode('utf-8')
-        labels_serialized = base64.b64encode(pickle.dumps(labels_np)).decode('utf-8')
-        print(f"Client {self.client_id} sending features shape: {features_np.shape}")
-        print(f"Client {self.client_id} sending labels shape: {labels_np.shape}")
-         
+      
         print(f'client id : {self.client_id} and valid accuracy is {accuracy} and valid loss is : {loss}')
         return float(loss), len(self.validdata), {"accuracy": float(accuracy),
-         "features": features_serialized,
-            "labels": labels_serialized,
         }
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
@@ -198,8 +106,7 @@ class FederatedClient(fl.client.NumPyClient):
             
             print(f"Client {self.client_id} starting fit() for round {round_number}")
             
-          
-            
+   
             start_time = time.time()
             
             # Update model with global parameters
@@ -225,15 +132,15 @@ class FederatedClient(fl.client.NumPyClient):
             training_duration = time.time() - start_time
             
             # Get updated parameters
-            updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
+            #updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
             
             # Return parameters and metrics (NumPyClient format)
             num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
             
-            return updated_parameters, num_examples, {
+            return  (self.get_parameters(), num_examples, {
                 "data_size": num_examples,
                 "duration": training_duration,
-            }
+            })
             
         except Exception as e:
             print(f"ERROR: Client {self.client_id} FAILURE during fit round {round_number}: {e}")
@@ -498,13 +405,7 @@ cfg=None  ,
         if strategy=="gpaf":
           
           img_shape=(28,28)
-          encoder = Encoder(latent_dim).to(device)
-          classifier = Classifier(latent_dim=64, num_classes=num_classes).to(device)
-          #print(f' clqssifier intiliation {classifier}')
-          discriminator = Discriminator(latent_dim=64).to(device)
-          decoder = Decoder(latent_dim).to(device)
-          # Note: each client gets a different trainloader/valloader, so each client
-          # will train and evaluate on their own unique data
+          model = ModelCDCSF(latent_dim).to(device)
           trainloader = trainloaders[int(cid)]
           # Initialize the feature visualizer for all clients
           feature_visualizer = StructuredFeatureVisualizer(
@@ -518,11 +419,7 @@ save_dir="feature_visualizations"
             print(f"Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")
             break  # Just check the first batch
           numpy_client =  FederatedClient(
-            encoder,
-            classifier,
-            discriminator,
-            
-            decoder,
+           model,
             trainloader,
             valloader,
             num_epochs,

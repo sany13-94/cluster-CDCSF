@@ -9,8 +9,6 @@ import os
 from fedprox.dataset_preparation import _partition_data,build_transform, create_domain_shifted_loaders,buid_domain_transform, DataSplitManager,build_transform,make_pathmnist_clients_final
 
 
-
-
 def get_split_path(num_clients ,split_type: str,seed=42,domain_shift=False):
         """Get path for split file."""
         
@@ -31,7 +29,9 @@ def _get_indices( dataset):
         if hasattr(dataset, 'indices'):
             return dataset.indices
         return list(range(len(dataset)))
-    
+
+
+
 def _get_labels( dataset):
         """Extract labels from dataset."""
         if hasattr(dataset, 'targets'):
@@ -70,6 +70,11 @@ def save_splits(num_clients ,trainloaders, valloaders, testloader,domain_shift=F
         torch.save(val_splits, get_split_path(num_clients,'val',domain_shift=domain_shift))
         torch.save(test_split, get_split_path(num_clients,'test',domain_shift=domain_shift))
         print(f"✓ Saved splits")
+
+
+
+
+
 def load_datasets(  # pylint: disable=too-many-arguments
     config: DictConfig,
     num_clients: int,

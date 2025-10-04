@@ -30,286 +30,9 @@ print(f'gg: {nested_repo_path}')
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 import torch.nn as nn
 import torch
-def get_model(model_name):
-  if model_name == 'vit':
-    model = ViT(
-    image_size=28,        # specify image size
-    patch_size=14,
-    num_classes=2,        # specify the number of output classes
-    dim=128,               # embedding dimension
-    depth=8,               # number of transformer layers
-    heads=4,               # number of attention heads
-    mlp_dim=512,          # MLP hidden layer dimension
-    pool='mean',            # 'cls' or 'mean' pooling
-    channels=1,            # number of input channels (e.g., 3 for RGB images)
-    dim_head=64,           # dimension per attention head
-    dropout=0.3,
-    #emb_dropout=0.1        # embedding dropout rate
-    ).to(device)
-  elif model_name == 'swim':
-    layernorm = nn.LayerNorm
-    USE_CHECKPOINT=False
-    FUSED_WINDOW_PROCESS=False
-    IMG_SIZE=28
-    IN_CHANS=1
-    NUM_CLASSES=2
-    DEPTHS= [4,6]
-    NUM_HEADS=[12,24]
-    WINDOW_SIZE=7
-    MLP_RATIO=4
-    PATCH_SIZE=2
-    EMBED_DIM=96
-    QKV_BIAS=True
-    QK_SCALE=None
-    DROP_RATE=0.1
-    DROP_PATH_RATE=0.2
-    APE=False
-    PATCH_NORM=True
-    model = SwinTransformer(img_size=IMG_SIZE,
-                                patch_size=PATCH_SIZE,
-                                in_chans=IN_CHANS,
-                                num_classes=NUM_CLASSES,
-                                embed_dim=EMBED_DIM,
-                                depths=DEPTHS,
-                                num_heads=NUM_HEADS,
-                                window_size=WINDOW_SIZE,
-                                mlp_ratio=MLP_RATIO,
-                                qkv_bias=QKV_BIAS,
-                                qk_scale=QK_SCALE,
-                                drop_rate=DROP_RATE,
-                                drop_path_rate=DROP_PATH_RATE,
-                                ape=APE,
-                                norm_layer=layernorm,
-                                patch_norm=PATCH_NORM,
-                                use_checkpoint=USE_CHECKPOINT,
-                                fused_window_process=FUSED_WINDOW_PROCESS)
 
-  elif model_name =='resnet':
-         model= resnet18_breastmnist()  # Using the ResNet model we defined
-  return model
 Tensor = torch.FloatTensor
-# First, let's define the GRL layer for client side
-
-class GradientReversalFunction(torch.autograd.Function):
-    """
-    Custom autograd function for gradient reversal.
-    Forward: Acts as identity function
-    Backward: Reverses gradient by multiplying by -lambda
-    """
-    @staticmethod
-    def forward(ctx, x, lambda_):
-        # Store lambda for backward pass
-        ctx.lambda_ = lambda_
-        # Forward pass is identity function
-        return x.clone()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        # Reverse gradient during backward pass
-        # grad_output: gradient from subsequent layer
-        # -lambda * gradient gives us gradient reversal
-        return ctx.lambda_ * grad_output.neg(), None
-
-class GradientReversalLayer(nn.Module):
-    """
-    Gradient Reversal Layer.
-    Implements gradient reversal for adversarial training.
-    """
-    def __init__(self, lambda_=1.0):
-        super().__init__()
-        self.lambda_ = lambda_
-        
-    def forward(self, x):
-        return GradientReversalFunction.apply(x, self.lambda_)
-        
-
-
-
-
-class GlobalGenerator(nn.Module):
-    def __init__(self, noise_dim, label_dim, hidden_dim, output_dim):
-        super().__init__()
-        self.noise_dim = noise_dim
-        self.label_dim = label_dim
-        
-        # Initial projection for noise
-        self.noise_proj = nn.Sequential(
-            nn.Linear(noise_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.LeakyReLU(0.2)
-        )
-        
-        # Initial projection for labels
-        self.label_proj = nn.Sequential(
-            nn.Linear(label_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.LeakyReLU(0.2)
-        )
-        
-        # Mu and logvar projections
-        self.mu_proj = nn.Linear(2 * hidden_dim, output_dim)
-        self.logvar_proj = nn.Linear(2 * hidden_dim, output_dim)
-        
-        # Output projection
-        self.output_proj = nn.Linear(output_dim, output_dim)
-        
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        z = mu + eps * std
-        return z
     
-    def forward(self, noise, labels, return_distribution=False):
-        # Project noise and labels to same dimension
-        noise_feat = self.noise_proj(noise)  # [batch_size, hidden_dim]
-        label_feat = self.label_proj(labels)  # [batch_size, hidden_dim]
-        #print(f"noise_feat shape: {noise_feat.shape}")
-        #print(f"label_feat shape: {label_feat.shape}")
-        
-        label_feat = label_feat.squeeze(1)  # Converts [32, 1, 256] → [32, 256]
-        # Combine features
-        combined = torch.cat([noise_feat, label_feat], dim=1)  # [batch_size, 2*hidden_dim]
-        
-        # Generate mu and logvar
-        mu = self.mu_proj(combined)
-        logvar = self.logvar_proj(combined)
-        
-        # Apply reparameterization trick
-        z = self.reparameterize(mu, logvar)
-        
-        # Final output projection
-        features = self.output_proj(z)
-        
-        if return_distribution:
-            return features, mu, logvar
-        return features
-
-
-
-class GlobalDiscriminator(nn.Module):
-    def __init__(self, input_dim=64, hidden_dim=256):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.LeakyReLU(0.2),
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.LeakyReLU(0.2),
-            nn.Linear(hidden_dim // 2, 1),
-            nn.Sigmoid()
-        )
-    def forward(self, z):
-        return self.model(z)
-
-
-def reparameterize(mu, logvar):
-
-    std = torch.exp(0.5 * logvar)  # Standard deviation
-    eps = torch.randn_like(std)    # Random noise from N(0, I)
-    z = mu + eps * std             # Reparameterized sample
-    return z
-def sample_labels(batch_size, label_probs):
-  
-    #print(f'lqbel prob {label_probs}')
-    # Extract probabilities from the dictionary
-    probabilities = list(label_probs.values())
-    
-    # Extract labels from the dictionary
-    labels = list(label_probs.keys())
-    sampled_labels = np.random.choice(labels, size=batch_size, p=probabilities)
-    return torch.tensor(sampled_labels, dtype=torch.long)
-
-def generate_feature_representation(generator, noise, labels_one_hot):
-   
-    z = generator(noise, labels_one_hot)
-    return z
-#in our GPAF we will train a VAE-GAN local model in each client
-img_shape=(28,28)
-
-def reparameterization(mu, logvar,latent_dim):
-    std = torch.exp(logvar / 2)
-    #sampled_z = Variable(Tensor(np.random.normal(0, 1, (mu.size(0), latent_dim))))
-    sampled_z = torch.randn_like(mu)  # Sample from standard normal distribution
-    z = sampled_z * std + mu
-    return z
-
-
-#replace shalow feature extractor with swim architecture 
-'''
-class Encoder(nn.Module):
-    def __init__(self, latent_dim):
-        super(Encoder, self).__init__()
-        self.latent_dim = latent_dim
-        layernorm = nn.LayerNorm
-        USE_CHECKPOINT=False
-        FUSED_WINDOW_PROCESS=False
-        IMG_SIZE=28
-        IN_CHANS=1
-        NUM_CLASSES=2
-        DEPTHS= [4,6]
-        NUM_HEADS=[12,24]
-        WINDOW_SIZE=7
-        MLP_RATIO=4
-        PATCH_SIZE=2
-        EMBED_DIM=96
-        QKV_BIAS=True
-        QK_SCALE=None
-        DROP_RATE=0.1
-        DROP_PATH_RATE=0.2
-        APE=False
-        PATCH_NORM=True
-        # Replace sequential model with Swin Transformer
-        self.swin = SwinTransformer(img_size=IMG_SIZE,
-                                patch_size=PATCH_SIZE,
-                                in_chans=IN_CHANS,
-                                num_classes=NUM_CLASSES,
-                                embed_dim=EMBED_DIM,
-                                depths=DEPTHS,
-                                num_heads=NUM_HEADS,
-                                window_size=WINDOW_SIZE,
-                                mlp_ratio=MLP_RATIO,
-                                qkv_bias=QKV_BIAS,
-                                qk_scale=QK_SCALE,
-                                drop_rate=DROP_RATE,
-                                drop_path_rate=DROP_PATH_RATE,
-                                ape=APE,
-                                norm_layer=layernorm,
-                                patch_norm=PATCH_NORM,
-                                use_checkpoint=USE_CHECKPOINT,
-                                fused_window_process=FUSED_WINDOW_PROCESS)
-  
-   
-        # Remove the classification head
-        delattr(self.swin, 'head')
-        
-        # Add a feature processing layer (similar to your original 512 dims)
-        self.feature_process = nn.Sequential(
-            nn.Linear(self.swin.num_features, 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.BatchNorm1d(512)
-        )
-        
-        # Keep the same mu and logvar projections
-        self.mu = nn.Linear(512, latent_dim)
-        self.logvar = nn.Linear(512, latent_dim)
-
-    def forward(self, img):
-        # Get Swin features
-        features = self.swin.forward_features(img)
-        
-        # Process features
-        x = self.feature_process(features)
-        
-        # Get mu and logvar
-        mu = self.mu(x)
-        logvar = self.logvar(x)
-        
-        # Sample using reparameterization
-        z = reparameterization(mu, logvar, self.latent_dim)
-        
-        return z
-'''
-#resnet for fedavg
-
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(
@@ -358,19 +81,21 @@ class BasicBlock(nn.Module):
 
         return out
 
-class ResNetBreastMNIST(nn.Module):
+class ResNetPathMNIST(nn.Module):
+    """ResNet backbone adapted for PathMNIST (28x28 RGB images)"""
+    
     def __init__(self, block, layers, num_classes=9):
         super().__init__()
         
-        # Initial channel is 1 for grayscale images
-        self.inplanes = 32  # Reduced from 64 to handle smaller images
+        # Initial channel is 3 for RGB images (PathMNIST)
+        self.inplanes = 32  # Reduced from 64 for smaller 28x28 images
         
-        # First conv layer modified for 28x28 grayscale input
+        # First conv layer for 28x28 RGB input
         self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         
-        # Main layers
+        # Main ResNet layers
         self.layer1 = self._make_layer(block, 32, layers[0])
         self.layer2 = self._make_layer(block, 64, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 128, layers[2], stride=2)
@@ -420,377 +145,68 @@ class ResNetBreastMNIST(nn.Module):
 
         return x
 
-def resnet18_breastmnist():
-    """ResNet-18 model adapted for BreastMNIST dataset"""
-    return ResNetBreastMNIST(BasicBlock, [2, 2, 2, 2])
-"""
-class globalDiscriminator(nn.Module):
-    def __init__(self, noise_dim, feat_dim, hidden_dim):
-        super().__init__()
-        
-        # Network to process noise vector
-        self.noise_net = nn.Sequential(
-            nn.Linear(noise_dim, hidden_dim),
-            nn.LeakyReLU(0.2),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LeakyReLU(0.2)
-        )
-        
-        # Network to process features
-        self.feat_net = nn.Sequential(
-            nn.Linear(feat_dim, hidden_dim),
-            nn.LeakyReLU(0.2),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.LeakyReLU(0.2)
-        )
-        
-        # Output layer
-        self.output = nn.Linear(hidden_dim * 2, 1)
-    
-    def forward(self, noise, features):
-        noise_feat = self.noise_net(noise)
-        z_feat = self.feat_net(features)
-        
-        # Concatenate both feature vectors
-        combined = torch.cat([noise_feat, z_feat], dim=1)
-        
-        # Output prediction
-        return self.output(combined)
+def resnet18_pathmnist():
+    """ResNet-18 model adapted for PathMNIST dataset"""
+    return ResNetPathMNIST(BasicBlock, [2, 2, 2, 2])
 
-class Encoder(nn.Module):
-    def __init__(self,latent_dim):
-        super(Encoder, self).__init__()
-        self.latent_dim=latent_dim
-        self.model = nn.Sequential(
-            nn.Linear(int(np.prod(img_shape)), 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 512),
-            nn.BatchNorm1d(512),
-            nn.LeakyReLU(0.2, inplace=True),
-        )
-
-        self.mu = nn.Linear(512, latent_dim)
-        self.logvar = nn.Linear(512, latent_dim)
-
-    def forward(self, img):
-        #print(f"Encoder input shape (img): {img.shape}")  # Debug: Print input shape
-
-        img_flat = img.view(img.shape[0], -1)
-        x = self.model(img_flat)
-        #print(f"Encoder model output shape (x): {x.shape}")  # Debug: Print model output shape
-
-        mu = self.mu(x)
-        logvar = self.logvar(x)
-        z = reparameterization(mu, logvar,self.latent_dim)
-        #print(f"Encoder output shape (z): {z.shape}")  # Debug: Print output shape
-
-        #self._register_hooks()
-        return z
-    
-
-
-# =========== bREASTmnIST DATASET ======
-class Encoder(nn.Module):
-    def __init__(self, latent_dim):
-        img_shape=(3,28,28)
-        super(Encoder, self).__init__()
-        self.latent_dim = latent_dim
-        self.img_shape = img_shape
-        self.model = nn.Sequential(
-            nn.Conv2d(img_shape[0], 64, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Flatten(),
-            nn.Linear(128 * (img_shape[1] // 4) * (img_shape[2] // 4), 512),
-            nn.LeakyReLU(0.2, inplace=True),
-        )
-        self.mu = nn.Linear(512, latent_dim)
-        self.logvar = nn.Linear(512, latent_dim)
-
-    def forward(self, img):
-        x = self.model(img)
-        mu = self.mu(x)
-        logvar = self.logvar(x)
-        z = reparameterization(mu, logvar, self.latent_dim)
-        return z # Return mu, logvar for KL loss
-
-class LocalDiscriminator(nn.Module):
-    def __init__(self, feature_dim, num_domains):
-        super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(feature_dim, 256),
-            nn.LeakyReLU(0.2),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.LeakyReLU(0.2),
-            nn.Linear(128, 3)  # Output logits for each domain
-        )
-    
-    def forward(self, x):
-        return self.model(x)
-
-class Discriminator(nn.Module):
-    def __init__(self,latent_dim):
-        super(Discriminator, self).__init__()
-
-        self.model = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(256, 1),
-            nn.Sigmoid(),
-        )
-        # Register hooks to track shapes
-        #self._register_hooks()
-
-    def forward(self, z):
-        validity = self.model(z)
-        return validity
-    
-
-class Decoder(nn.Module):
-    def __init__(self, latent_dim):
-       
-        super(Decoder, self).__init__()
-        img_shape=(3,28,28)
-        self.latent_dim = latent_dim
-        self.img_shape = img_shape  # e.g., (1, 28, 28) for channels, height, width
-
-        # Project latent vector to a spatial feature map
-        self.fc = nn.Linear(latent_dim, 512 * 7 * 7)  # Initial feature map: 512 channels, 7x7
-
-        # Transposed convolutional layers for upsampling
-        self.conv_transpose_layers = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, img_shape[0], kernel_size=3, stride=1, padding=1),
-            nn.Sigmoid()  # Output in [0,1], matching your normalization
-        )
-
-    def forward(self, z):
-        # Project latent vector to spatial dimensions
-        x = self.fc(z)  # Shape: (batch_size, 512 * 7 * 7)
-        x = x.view(-1, 512, 7, 7)  # Reshape to (batch_size, 512, 7, 7)
-        x = self.conv_transpose_layers(x)  # Upsample to (batch_size, C, 28, 28)
-        return x
-
-
-
-class Classifier(nn.Module):
-    def __init__(self,latent_dim,num_classes=2):
-        super(Classifier, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(256, num_classes),  # Output layer for multi-class classification
-      
-        )
-        self._register_hooks()
-
-    def forward(self, z):
-        logits = self.model(z)
-        return logits
-  
-#for moon model 
-
-class ModelMOON(nn.Module):
-
-    def __init__(self,out_dim, n_classes):
-        super().__init__()
-
-        basemodel = resnet18_breastmnist()
-        self.features = nn.Sequential(*list(basemodel.children())[:-1])
-        num_ftrs = basemodel.fc.in_features
-      
-
-        # projection MLP
-        self.l1 = nn.Linear(num_ftrs, num_ftrs)
-        self.l2 = nn.Linear(num_ftrs, out_dim)
-
-        # last layer
-        self.l3 = nn.Linear(out_dim, n_classes)
-
-    def _get_basemodel(self, model_name):
-        try:
-            model = self.model_dict[model_name]
-            return model
-        except KeyError as err:
-            raise ValueError("Invalid model name.") from err
-
-    def forward(self, x):
-        h = self.features(x)
-        h = h.squeeze()
-        x = self.l1(h)
-        x = F.relu(x)
-        x = self.l2(x)
-
-        y = self.l3(x)
-        return h, x, y
-"""
 # =========== PathMnist DATASET ======
-class Encoder(nn.Module):
-    def __init__(self, latent_dim):
-        img_shape = (3, 28, 28)  # PathMNIST is RGB (3 channels)
-        super(Encoder, self).__init__()
-        self.latent_dim = latent_dim
-        self.img_shape = img_shape
-        self.model = nn.Sequential(
-            nn.Conv2d(img_shape[0], 64, kernel_size=4, stride=2, padding=1),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Flatten(),
-            nn.Linear(128 * (img_shape[1] // 4) * (img_shape[2] // 4), 512),
-            nn.LeakyReLU(0.2, inplace=True),
-        )
-        self.mu = nn.Linear(512, latent_dim)
-        self.logvar = nn.Linear(512, latent_dim)
- 
-    def forward(self, img):
-        x = self.model(img)
-        mu = self.mu(x)
-        logvar = self.logvar(x)
-        z = reparameterization(mu, logvar, self.latent_dim)
-        return z  # Return z for feature alignment
 
-class LocalDiscriminator(nn.Module):
-    def __init__(self, feature_dim, num_domains=2):
+class ModelCDCSF(nn.Module):
+
+    """
+    Simplified model for federated learning with prototype extraction.
+    
+    Architecture:
+    - Feature extractor: ResNet18 backbone
+    - Classification head: Linear layer for final prediction
+    
+    Returns:
+    - h: Feature embeddings from backbone (for prototype extraction)
+    - _: Placeholder (kept for compatibility)
+    - y: Final predictions (for classification)
+    """
+
+    def __init__(self, out_dim=256, n_classes=9):
+        """
+        Args:
+            out_dim: Not used, kept for compatibility
+            n_classes: Number of output classes
+        """
         super().__init__()
-        self.model = nn.Sequential(
-            nn.Linear(feature_dim, 256),
-            nn.LeakyReLU(0.2),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.LeakyReLU(0.2),
-            nn.Linear(128, num_domains)  # Output logits for each domain
-        )
-   
+
+        # Base ResNet18 for PathMNIST
+        basemodel = resnet18_pathmnist()
+        
+        # Feature extractor (all layers except final FC)
+        self.features = nn.Sequential(*list(basemodel.children())[:-1])
+        
+        # Get the feature dimension from the base model
+        num_ftrs = basemodel.fc.in_features  # Should be 256 for ResNet18
+
+        # Classification head (directly from features to classes)
+        self.fc = nn.Linear(num_ftrs, n_classes)
+
     def forward(self, x):
-        return self.model(x)
- 
-class Discriminator(nn.Module):
-    def __init__(self, latent_dim):
-        super(Discriminator, self).__init__()
- 
-        self.model = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(256, 1),
-            nn.Sigmoid(),
-        )
+        # Feature extraction
+        h = self.features(x)
+        h = h.squeeze()  # Remove spatial dimensions: [B, 256, 1, 1] -> [B, 256]
+        
+        # Handle case where batch size is 1
+        if h.dim() == 1:
+            h = h.unsqueeze(0)
 
-    def forward(self, z):
-        validity = self.model(z)
-        return validity
-
-class Decoder(nn.Module):
-    def __init__(self, latent_dim):
-        super(Decoder, self).__init__()
-        img_shape = (3, 28, 28)  # PathMNIST is RGB (3 channels)
-        self.latent_dim = latent_dim
-        self.img_shape = img_shape
- 
-        # Project latent vector to a spatial feature map
-        self.fc = nn.Linear(latent_dim, 512 * 7 * 7)  # Initial feature map: 512 channels, 7x7
- 
-        self.conv_transpose_layers = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, img_shape[0], kernel_size=3, stride=1, padding=1),
-            nn.Sigmoid()  # Output in [0,1], matching your normalization
-        )
-
-    def forward(self, z):
-        # Project latent vector to spatial dimensions
-        x = self.fc(z)  # Shape: (batch_size, 512 * 7 * 7)
-        x = x.view(-1, 512, 7, 7)  # Reshape to (batch_size, 512, 7, 7)
-        x = self.conv_transpose_layers(x)  # Upsample to (batch_size, C, 28, 28)
-        return x
-
-class Classifier(nn.Module):
-    def __init__(self, latent_dim, num_classes=9):  # PathMNIST has 9 classes
-        super(Classifier, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(latent_dim, 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(256, num_classes),
-        )
- 
-    def forward(self, z):
-        logits = self.model(z)
-        return logits
+        # Classification
+        y = self.fc(h)
+        
+        # Return (features, placeholder, predictions)
+        # Placeholder is None but maintains 3-return compatibility
+        return h, None, y
 
 
-# Save client models
-def save_client_model(client_id, encoder, classifier, decoder, save_dir="client_models"):
-    os.makedirs(save_dir, exist_ok=True)
-    torch.save(encoder.state_dict(), os.path.join(save_dir, f"encoder_client_{client_id}.pth"))
-    torch.save(classifier.state_dict(), os.path.join(save_dir, f"classifier_client_{client_id}.pth"))
-    torch.save(decoder.state_dict(), os.path.join(save_dir, f"decoder_client_{client_id}.pth"))
-
-# Load client models
-def load_client_model(client_id, encoder, classifier, decoder, save_dir="client_models"):
-    encoder.load_state_dict(torch.load(os.path.join(save_dir, f"encoder_client_{client_id}.pth")))
-    classifier.load_state_dict(torch.load(os.path.join(save_dir, f"classifier_client_{client_id}.pth")))
-    decoder.load_state_dict(torch.load(os.path.join(save_dir, f"decoder_client_{client_id}.pth")))
-    encoder.eval()
-    classifier.eval()
-    decoder.eval()
 
 import torch
 import os
 
-def print_gpu_usage():
-    allocated = torch.cuda.memory_allocated() / 1024**2
-    reserved = torch.cuda.memory_reserved() / 1024**2
-    print(f"[GPU] Allocated: {allocated:.2f} MB | Reserved: {reserved:.2f} MB")
-    os.system('nvidia-smi | grep MiB')  # Light, readable GPU info
-
-#contrastive loss for gpaf
-def contrastive_loss(local_features, global_features, temperature=0.5):
-   cos = torch.nn.CosineSimilarity(dim=-1)
-   
-   # Local-global alignment (positive pairs)
-   positive_sim = cos(local_features, global_features)
-   positive_loss = torch.mean(1 - positive_sim)
-   
-   # Feature diversity (negative pairs)
-   batch_size = local_features.size(0)
-   feature_sims = cos(local_features.unsqueeze(1), local_features.unsqueeze(0))
-   # Remove diagonal (self-similarity)
-   mask = ~torch.eye(batch_size, dtype=torch.bool, device=local_features.device)
-   negative_loss = torch.mean(feature_sims[mask])
-   
-   return positive_loss - temperature * negative_loss
-
-# Function to save the model checkpoint
-def save_checkpoint(model, optimizer, epoch, loss, filename="checkpoint.pth"):
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'loss': loss,
-    }
-    torch.save(checkpoint, filename)
-    print(f"Checkpoint saved at epoch {epoch}")
 def train_gpaf( encoder: nn.Module,
 classifier,
 discriminator,
