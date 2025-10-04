@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/de85cc4467084116a610b49d0db27fe1/artifacts
+end_time: 1759579621932
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: de85cc4467084116a610b49d0db27fe1
+run_name: charming-shad-492
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759579621672
+status: 4
+tags: []
+user_id: unknown

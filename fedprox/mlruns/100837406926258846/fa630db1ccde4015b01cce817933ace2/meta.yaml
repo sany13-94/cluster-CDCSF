@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/fa630db1ccde4015b01cce817933ace2/artifacts
+end_time: 1759580063335
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: fa630db1ccde4015b01cce817933ace2
+run_name: server
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759580063319
+status: 3
+tags: []
+user_id: root

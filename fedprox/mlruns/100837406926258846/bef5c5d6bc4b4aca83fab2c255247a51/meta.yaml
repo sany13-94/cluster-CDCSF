@@ -1,0 +1,14 @@
+artifact_uri: file:///content/cluster-CDCSF/fedprox/mlruns/100837406926258846/bef5c5d6bc4b4aca83fab2c255247a51/artifacts
+end_time: 1759578769897
+entry_point_name: ''
+experiment_id: '100837406926258846'
+lifecycle_stage: active
+run_id: bef5c5d6bc4b4aca83fab2c255247a51
+run_name: unruly-donkey-987
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1759578769515
+status: 4
+tags: []
+user_id: unknown

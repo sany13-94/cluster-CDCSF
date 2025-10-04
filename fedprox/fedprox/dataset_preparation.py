@@ -281,10 +281,10 @@ import medmnist
 # Assuming LazyPathMNIST, build_transform, and DomainShiftedPathMNIST are defined.
 
 class LazyPathMNIST(Dataset):
-   
     
     def __init__(self, split: str, transform=None):
-       
+        self.to_tensor_converter = transforms.ToTensor()
+
         if split not in ['train', 'test', 'val']:
             raise ValueError("Split must be one of 'train', 'test', or 'val'.")
             
@@ -312,32 +312,17 @@ class LazyPathMNIST(Dataset):
 
     def __getitem__(self, idx: int) :
         """
-        Loads and processes the image and label for a given index.
-        This is where the lazy loading (tensor conversion and transform) occurs.
+        Retourne l'image brute (NumPy array HWC, dtype=uint8) et le label (int).
         """
-        # Retrieve data from the stored numpy arrays (already specific to the split)
         img = self.imgs[idx]
-        label = self.labels[idx]
+        label = self.labels[idx].item()
+        # img: NumPy array (HWC) -> torch.Tensor (CHW, scaled 0-1)
         
-        # PathMNIST images are typically 28x28x3 (RGB) and need to be normalized/transposed
-        # 1. Convert to PyTorch Tensor (float type for images)
-        # Images are typically uint8, so we convert to float and scale (0-255 -> 0.0-1.0)
-        img = torch.tensor(img, dtype=torch.float32) / 255.0
-
-        # 2. Reshape/Permute: Convert HWC (Height, Width, Channel) to CHW (Channel, Height, Width)
-        # This is standard for PyTorch convolutions
-        img = img.permute(2, 0, 1)
-
-        # 3. Apply custom transform (if any)
-        # Note: The DomainShiftedPathMNIST wrapper will call this transform 
-        # only if the image is being used for the base dataset.
-        if self.transform is not None:
-            img = self.transform(img)
-
-        # 4. Convert label to LongTensor for classification loss functions
-        label_tensor = torch.tensor(label, dtype=torch.long)
+        img = self.to_tensor_converter(img)
         
-        return img, label_tensor   
+        # Retourne l'image brute (NumPy array) et le label (int)
+        return img, label
+  
         
 def make_pathmnist_clients_final(
     k: int=20,  # Total number of clients (k-1 from train + 1 from test)
