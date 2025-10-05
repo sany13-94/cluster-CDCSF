@@ -96,7 +96,7 @@ class GPAFStrategy(FedAvg):
         self.accuracy_history = defaultdict(float)
         self._current_accuracies = {}
         # ... existing initialization ...
-        # ... existing initialization ...
+        
         self.participated_clients = set()
         self.client_assignments = {}
         self.cluster_prototypes = {}
@@ -104,7 +104,12 @@ class GPAFStrategy(FedAvg):
         # Virtual cluster configuration
         self.use_virtual_cluster = True  # Enable virtual cluster for never-participated clients
         self.virtual_cluster_id = -1  # Special ID for never-participated clients
-
+        ema_alpha: float = 0.3,  # EMA smoothing for training times
+        beta: float = 1.5,  # Penalty strength for reliability score
+        initial_alpha1: float = 0.6,  # Initial reliability weight
+        initial_alpha2: float = 0.4,  # Initial fairness weight
+        phase_threshold: int = 20,  # Round to switch weight emphasis
+        total_rounds: int = 100,
       
 
 
@@ -130,7 +135,24 @@ class GPAFStrategy(FedAvg):
         self.target_selections = 5  # minimum selections per client
         self.accuracy_eval_interval = 5  # evaluate accuracy every R rounds
         self.phase_threshold = 30  # switch from reliability to fairness focus
+        # EMA Training Time Tracking
+        self.ema_alpha = ema_alpha
+        self.training_times = {}  # T_c(i) - EMA of training times
         
+        # Reliability Score Parameters
+        self.beta = beta  # Penalty strength parameter
+        
+        # Fairness Tracking
+        self.selection_counts = {}  # v_c - number of times client selected
+        self.total_rounds_completed = 0  # T - total rounds
+        
+        # Weight Adaptation
+        self.initial_alpha1 = initial_alpha1
+        self.initial_alpha2 = initial_alpha2
+        self.phase_threshold = phase_threshold
+        self.total_rounds = total_rounds
+        
+        print(f"[Init] Strategy initialized with α={ema_alpha}, β={beta}")
 
         # Initialize other components
         self.stat_util = {}
@@ -190,64 +212,69 @@ save_dir="feature_visualizations_gpaf"
  
 
     def aggregate_fit(
-    self,
-    server_round: int,
-    results: List[Tuple[ClientProxy, FitRes]],
-    failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
-) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-      """Aggregate with tracking of participants."""
-      print(f'results failure: {failures}')
-      if not results:
-        print("No clients returned results. Aggregation skipped.")
-        return None, {}
-
-      clients_params_list = []
-      num_samples_list = []
-      current_round_durations = []
-      current_participants = set()
-
-      for client_proxy, fit_res in results:
-        client_id = client_proxy.cid
-        metrics = fit_res.metrics
-        
-        self.participated_clients.add(client_id)
-        current_participants.add(client_id)
-        
-        if "duration" in metrics:
-            duration = metrics["duration"]
-            ema_alpha = 0.3
-            if client_id not in self.training_times:
-                self.training_times[client_id] = duration
-            else:
-                self.training_times[client_id] = (
-                    ema_alpha * duration +
-                    (1 - ema_alpha) * self.training_times[client_id]
-                )
-            current_round_durations.append(duration)
-        
-        if "loss_sq_mean" in metrics and "data_size" in metrics:
-            stat_util = metrics["data_size"] * metrics["loss_sq_mean"]
-            self.stat_util[client_id] = stat_util
-        
-        clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
-        num_samples_list.append(fit_res.num_examples)
-
-      self.last_round_participants = current_participants
-      print(f"[Aggregate] Round {server_round} participants: {list(current_participants)}")
-
-      if current_round_durations:
-        current_avg_duration = sum(current_round_durations) / len(current_round_durations)
-        ewma_decay = 0.1
+        self,
+        server_round: int,
+        results: List[Tuple[ClientProxy, FitRes]],
+        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """
-        if self.global_T_max == 0.0:
-            self.global_T_max = current_avg_duration
-        else:
-            self.global_T_max = (1 - ewma_decay) * self.global_T_max + ewma_decay * current_avg_duration
+        Aggregate model updates and update client statistics
         """
-      aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
+        if failures:
+            print(f"[Round {server_round}] Failures: {len(failures)}")
+        
+        if not results:
+            print(f"[Round {server_round}] No clients returned results. Skipping aggregation.")
+            return None, {}
+        
+        clients_params_list = []
+        num_samples_list = []
+        current_round_durations = []
+        current_participants = set()
+        
+        # Process results and update tracking
+        for client_proxy, fit_res in results:
+            client_id = client_proxy.cid
+            metrics = fit_res.metrics
+            
+            self.participated_clients.add(client_id)
+            current_participants.add(client_id)
+            
+            # Update EMA training time - Equation (4)
+            if "duration" in metrics:
+                duration = metrics["duration"]
+                
+                # Initialize or update T_c(i)
+                if client_id not in self.training_times:
+                    # First observation: T_c(0) = t_avail_c(0)
+                    self.training_times[client_id] = duration
+                    print(f"[EMA Init] Client {client_id}: T_c(0) = {duration:.2f}s")
+                else:
+                    # EMA update: T_c(i) = α * t_avail_c(i) + (1-α) * T_c(i-1)
+                    old_ema = self.training_times[client_id]
+                    self.training_times[client_id] = (
+                        self.ema_alpha * duration + 
+                        (1 - self.ema_alpha) * old_ema
+                    )
+                    print(f"[EMA Update] Client {client_id}: {old_ema:.2f}s → {self.training_times[client_id]:.2f}s (raw: {duration:.2f}s)")
+                
+                current_round_durations.append(duration)
+            
+            # Collect parameters for aggregation
+            clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
+            num_samples_list.append(fit_res.num_examples)
+        
+        self.last_round_participants = current_participants
+        self.total_rounds_completed = server_round
+        
+        print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
+        print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
+        
+        # Perform FedAvg aggregation
+        aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
+        
+        return ndarrays_to_parameters(aggregated_params), {}
     
-      return ndarrays_to_parameters(aggregated_params), {}
-
 
     def _fedavg_parameters(
         self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
@@ -328,65 +355,217 @@ save_dir="feature_visualizations_gpaf"
         return None, {"accuracy": aggregated_accuracy}
    
   
-    def _compute_reliability_scores(self, client_ids: List[str]) -> Dict[str, float]:
+
+    def compute_reliability_scores(self, client_ids: List[str]) -> Dict[str, float]:
+        """
+        Compute reliability scores using the rational formula
+        A_s[c] = T_max / (T_c + β * T_max)
+        
+        Where:
+        - T_max: Average of all clients' EMA training times (Equation 5)
+        - T_c: Individual client's EMA training time (Equation 4)
+        - β: Penalty strength parameter
+        """
         reliability_scores = {}
         
-        valid_times = [self.training_times[cid] for cid in client_ids 
-                       if self.training_times.get(cid, 0.0) > 0.0]
-
-        T_avg = sum(valid_times) / len(valid_times) if valid_times else 1.0
-
-        print(f"[Reliability] T_avg for current selection pool: {T_avg:.2f}s")
-
-        for client_id in client_ids:
-            T_c = self.training_times.get(client_id, T_avg)
-            penalty_term = max(0.0, T_c - T_avg)
-            score = np.exp(-self.reliability_lambda * penalty_term)
-            
-            reliability_scores[client_id] = float(min(1.0, max(0.0, score)))
-            
-        return reliability_scores
-
-    def _compute_fairness_scores(self, client_ids: List[str]) -> Dict[str, float]:
-        fairness_scores = {}
-        for client_id in client_ids:
-            v_c = self.selection_counts.get(client_id, 0)
-            Target_c = self.client_targets.get(client_id, self.initial_target_selections)
-
-            if Target_c <= 0:
-                score = 0.0
-            else:
-                score = max(0.0, (Target_c - v_c) / Target_c)
-            
-            fairness_scores[client_id] = float(score)
-            
-        return fairness_scores
-
-
-    def _compute_global_selection_scores(self, client_ids: List[str], server_round: int) -> Dict[str, float]:
-        reliability_scores = self._compute_reliability_scores(client_ids)
-        fairness_scores = self._compute_fairness_scores(client_ids)
+        # Calculate T_max - Equation (5): Average of EMA values
+        valid_times = [
+            self.training_times[cid] 
+            for cid in client_ids 
+            if cid in self.training_times and self.training_times[cid] > 0.0
+        ]
         
+        if not valid_times:
+            print("[Reliability] Warning: No valid training times available")
+            return {cid: 0.5 for cid in client_ids}
+        
+        # T_max = (1/N) * Σ T_c(i) for all clients
+        T_max = np.mean(valid_times)
+        
+        print(f"\n[Reliability Scores] Round {self.total_rounds_completed}")
+        print(f"  T_max (system average EMA): {T_max:.2f}s")
+        print(f"  β (penalty strength): {self.beta}")
+        print(f"  β * T_max: {self.beta * T_max:.2f}s")
+        
+        # Calculate reliability score for each client - Equation (6)
+        for client_id in client_ids:
+            # Get client's EMA training time
+            T_c = self.training_times.get(client_id, T_max)
+            
+            # A_s[c] = T_max / (T_c + β * T_max)
+            denominator = T_c + (self.beta * T_max)
+            reliability_score = T_max / denominator
+            
+            # Ensure bounded output [0, 1]
+            reliability_scores[client_id] = float(np.clip(reliability_score, 0.0, 1.0))
+            
+            print(f"  Client {client_id}: T_c={T_c:.2f}s, A_s={reliability_scores[client_id]:.4f}")
+        
+        return reliability_scores
+    
+    
+    def compute_fairness_scores(self, client_ids: List[str]) -> Dict[str, float]:
+        """
+        Compute fairness scores using self-regulating mechanism
+        f_s[c] = 1 / (1 + R_c)
+        
+        Where:
+        - R_c = v_c / (T/N): Selection ratio (Equation 7)
+        - v_c: Number of times client c has been selected
+        - T: Total rounds completed
+        - N: Total number of clients
+        """
+        fairness_scores = {}
+        
+        N = len(client_ids)  # Total number of clients in pool
+        T = self.total_rounds_completed  # Total rounds
+        
+        # Ideal selections per client
+        ideal_selections = T / N if T > 0 else 1.0
+        
+        print(f"\n[Fairness Scores] Round {T}")
+        print(f"  Total rounds (T): {T}")
+        print(f"  Total clients (N): {N}")
+        print(f"  Ideal selections per client (T/N): {ideal_selections:.2f}")
+        
+        for client_id in client_ids:
+            # Get selection count v_c
+            v_c = self.selection_counts.get(client_id, 0)
+            
+            # Calculate selection ratio R_c = v_c / (T/N)
+            if ideal_selections > 0:
+                R_c = v_c / ideal_selections
+            else:
+                R_c = 0.0
+            
+            # Fairness score: f_s = 1 / (1 + R_c) - Equation (8)
+            fairness_score = 1.0 / (1.0 + R_c)
+            
+            fairness_scores[client_id] = float(fairness_score)
+            
+            print(f"  Client {client_id}: v_c={v_c}, R_c={R_c:.3f}, f_s={fairness_score:.4f}")
+        
+        return fairness_scores
+    
+    
+    def compute_global_selection_scores(
+        self, 
+        client_ids: List[str], 
+        server_round: int
+    ) -> Dict[str, float]:
+        """
+        Compute global selection scores
+        S_c = α₁ * A_s[c] + α₂ * f_s[c]
+        
+        With adaptive weights based on training phase
+        """
+        # Compute component scores
+        reliability_scores = self.compute_reliability_scores(client_ids)
+        fairness_scores = self.compute_fairness_scores(client_ids)
+        
+        # Adapt weights based on training phase
         alpha_1, alpha_2 = self._adapt_weights(server_round)
         
+        # Compute global scores
         final_scores = {}
         for client_id in client_ids:
             reliability = reliability_scores.get(client_id, 0.0)
             fairness = fairness_scores.get(client_id, 0.0)
-            final_scores[client_id] = (alpha_1 * reliability) + (alpha_2 * fairness)
+            
+            # Global score: S_c = α₁ * A_s + α₂ * f_s
+            global_score = (alpha_1 * reliability) + (alpha_2 * fairness)
+            final_scores[client_id] = float(global_score)
         
-        print(f"[Global Score] Round {server_round}: Weights: reliability={alpha_1:.2f}, fairness={alpha_2:.2f}")
-        for cid in client_ids[:min(5, len(client_ids))]:
-            print(f"  Client {cid}: R={reliability_scores.get(cid, 0):.3f}, F={fairness_scores.get(cid, 0):.3f}, Score={final_scores[cid]:.3f}")
+        # Print summary
+        print(f"\n[Global Scores] Round {server_round}")
+        print(f"  Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
+        print(f"  Top clients by score:")
+        
+        sorted_clients = sorted(
+            final_scores.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )[:min(10, len(final_scores))]
+        
+        for cid, score in sorted_clients:
+            r_score = reliability_scores.get(cid, 0.0)
+            f_score = fairness_scores.get(cid, 0.0)
+            v_c = self.selection_counts.get(cid, 0)
+            print(f"    {cid}: Score={score:.4f} (R={r_score:.3f}, F={f_score:.3f}, selected={v_c}x)")
         
         return final_scores
+    
+    
     def _adapt_weights(self, server_round: int) -> Tuple[float, float]:
-        if server_round <= self.phase_threshold:
-            return 0.7, 0.3
+        """
+        Adapt α₁ and α₂ weights based on training progress
+        
+        Early training: Emphasize reliability (fast convergence)
+        Late training: Emphasize fairness (balanced participation)
+        """
+        progress = server_round / self.total_rounds
+        
+        if progress < 0.2:
+            # Early phase (0-20%): Prioritize reliability for stable initial model
+            alpha_1, alpha_2 = 0.7, 0.3
+        elif progress < 0.8:
+            # Middle phase (20-80%): Balanced approach
+            alpha_1, alpha_2 = 0.6, 0.4
         else:
-            return 0.4, 0.6
-
-    #fedavg evaluate_fit
+            # Late phase (80-100%): Prioritize fairness for comprehensive coverage
+            alpha_1, alpha_2 = 0.4, 0.6
+        
+        return alpha_1, alpha_2
+    
+    
+    def select_clients_from_cluster(
+        self,
+        cluster_clients: List[str],
+        num_clients_to_select: int,
+        server_round: int
+    ) -> List[str]:
+        """
+        Select top-k clients from a cluster based on global scores
+        
+        Args:
+            cluster_clients: List of client IDs in the cluster
+            num_clients_to_select: Number of clients to select (k)
+            server_round: Current round number
+        
+        Returns:
+            List of selected client IDs
+        """
+        if not cluster_clients:
+            return []
+        
+        # Compute global scores for all clients in cluster
+        global_scores = self.compute_global_selection_scores(
+            cluster_clients, 
+            server_round
+        )
+        
+        # Sort by score (descending) and select top-k
+        sorted_clients = sorted(
+            global_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
+        
+        num_to_select = min(num_clients_to_select, len(sorted_clients))
+        selected = [cid for cid, _ in sorted_clients[:num_to_select]]
+        
+        # Update selection counts
+        for client_id in selected:
+            self.selection_counts[client_id] = self.selection_counts.get(client_id, 0) + 1
+        
+        print(f"\n[Selection] Round {server_round}: Selected {len(selected)} clients from cluster")
+        for cid in selected:
+            score = global_scores[cid]
+            count = self.selection_counts[cid]
+            print(f"  ✓ {cid}: Score={score:.4f}, Total selections={count}")
+        
+        return selected
+    
       
    
     def configure_fit(self, server_round: int, parameters: Parameters, client_manager: ClientManager) -> List[Tuple[ClientProxy, FitIns]]:
