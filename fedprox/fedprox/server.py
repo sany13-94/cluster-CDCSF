@@ -575,44 +575,44 @@ save_dir="feature_visualizations_gpaf"
     parameters: Parameters, 
     client_manager: ClientManager
 ) -> List[Tuple[ClientProxy, FitIns]]:
-    """
-    Enhanced client selection with:
-    1. Comprehensive clustering on ALL available clients (not just participated)
-    2. Virtual cluster for never-participated clients
-    3. Resource-aware selection within each cluster using corrected methodology
-    """
+      """
+      Enhanced client selection with:
+      1. Comprehensive clustering on ALL available clients (not just participated)
+      2. Virtual cluster for never-participated clients
+      3. Resource-aware selection within each cluster using corrected methodology
+      """
     
-    print(f"\n{'='*80}")
-    print(f"[Round {server_round}] CONFIGURE_FIT - Resource-Aware Fair Selection")
-    print(f"{'='*80}")
+      print(f"\n{'='*80}")
+      print(f"[Round {server_round}] CONFIGURE_FIT - Resource-Aware Fair Selection")
+      print(f"{'='*80}")
     
-    # Get all available clients
-    all_clients = client_manager.all()
-    available_client_cids = list(all_clients.keys())
+      # Get all available clients
+      all_clients = client_manager.all()
+      available_client_cids = list(all_clients.keys())
 
-    if not available_client_cids:
+      if not available_client_cids:
         print(f"[Round {server_round}] No clients available.")
         return []
 
-    print(f"\n[Client Status]")
-    print(f"  Total available clients: {len(available_client_cids)}")
-    print(f"  Previously participated: {len(self.participated_clients)}")
+      print(f"\n[Client Status]")
+      print(f"  Total available clients: {len(available_client_cids)}")
+      print(f"  Previously participated: {len(self.participated_clients)}")
     
-    # Categorize clients
-    participated_available = [cid for cid in available_client_cids 
+      # Categorize clients
+      participated_available = [cid for cid in available_client_cids 
                              if cid in self.participated_clients]
-    never_participated = [cid for cid in available_client_cids 
+      never_participated = [cid for cid in available_client_cids 
                          if cid not in self.participated_clients]
     
-    print(f"  Available participated clients: {len(participated_available)}")
-    print(f"  Available never-participated clients: {len(never_participated)}")
+      print(f"  Available participated clients: {len(participated_available)}")
+      print(f"  Available never-participated clients: {len(never_participated)}")
 
-    # =================================================================
-    # PHASE 1: COMPREHENSIVE PROTOTYPE COLLECTION (Every N rounds)
-    # =================================================================
-    clustering_round = (server_round % self.clustering_interval == 0)
+      # =================================================================
+      # PHASE 1: COMPREHENSIVE PROTOTYPE COLLECTION (Every N rounds)
+      # =================================================================
+      clustering_round = (server_round % self.clustering_interval == 0)
     
-    if clustering_round and participated_available:
+      if clustering_round and participated_available:
         print(f"\n{'─'*80}")
         print(f"[Clustering Round] Collecting prototypes from ALL available clients")
         print(f"{'─'*80}")
@@ -694,13 +694,13 @@ save_dir="feature_visualizations_gpaf"
         else:
             print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, only have {len(clients_with_prototypes)}")
 
-    # =================================================================
-    # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS
-    # =================================================================
-    clusters = defaultdict(list)
+      # =================================================================
+      # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS
+      # =================================================================
+      clusters = defaultdict(list)
     
-    # Add participated clients to their assigned clusters
-    for cid in participated_available:
+      # Add participated clients to their assigned clusters
+      for cid in participated_available:
         if cid in self.client_assignments:
             cluster_id = self.client_assignments[cid]
             clusters[cluster_id].append(cid)
@@ -708,34 +708,34 @@ save_dir="feature_visualizations_gpaf"
             # Clients without assignment go to cluster 0 by default
             clusters[0].append(cid)
     
-    # Add never-participated clients to virtual cluster
-    if never_participated and self.use_virtual_cluster:
+      # Add never-participated clients to virtual cluster
+      if never_participated and self.use_virtual_cluster:
         clusters[self.virtual_cluster_id] = never_participated
         print(f"\n[Virtual Cluster {self.virtual_cluster_id}] {len(never_participated)} new clients")
     
-    # Display cluster distribution
-    print(f"\n[Cluster Distribution]")
-    for cluster_id in sorted(clusters.keys()):
+      # Display cluster distribution
+      print(f"\n[Cluster Distribution]")
+      for cluster_id in sorted(clusters.keys()):
         cluster_clients = clusters[cluster_id]
         cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
         print(f"  Cluster {cluster_id} [{cluster_type}]: {len(cluster_clients)} clients")
 
-    # =================================================================
-    # PHASE 3: COMPUTE GLOBAL SELECTION SCORES
-    # =================================================================
-    print(f"\n{'─'*80}")
-    print(f"[Score Computation] Round {server_round}")
-    print(f"{'─'*80}")
+      # =================================================================
+      # PHASE 3: COMPUTE GLOBAL SELECTION SCORES
+      # =================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Score Computation] Round {server_round}")
+      print(f"{'─'*80}")
     
-    # Get adaptive weights
-    alpha_1, alpha_2 = self._adapt_weights(server_round)
-    print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
+      # Get adaptive weights
+      alpha_1, alpha_2 = self._adapt_weights(server_round)
+      print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
     
-    # Compute scores for ALL available clients
-    all_scores = {}
+      # Compute scores for ALL available clients
+      all_scores = {}
     
-    # Process participated clients (use actual methodology)
-    if participated_available:
+      # Process participated clients (use actual methodology)
+      if participated_available:
         print(f"\n[Participated Clients] Computing scores using full methodology...")
         participated_scores = self.compute_global_selection_scores(
             participated_available, 
@@ -743,8 +743,8 @@ save_dir="feature_visualizations_gpaf"
         )
         all_scores.update(participated_scores)
     
-    # Process never-participated clients (special handling)
-    if never_participated:
+      # Process never-participated clients (special handling)
+      if never_participated:
         print(f"\n[New Clients] Assigning initial scores...")
         for cid in never_participated:
             # New clients get:
@@ -756,31 +756,31 @@ save_dir="feature_visualizations_gpaf"
             all_scores[cid] = (alpha_1 * reliability) + (alpha_2 * fairness)
             print(f"  Client {cid}: R={reliability:.3f}, F={fairness:.3f}, Score={all_scores[cid]:.3f}")
 
-    # =================================================================
-    # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS
-    # =================================================================
-    print(f"\n{'─'*80}")
-    print(f"[Selection Distribution]")
-    print(f"{'─'*80}")
+      # =================================================================
+      # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS
+      # =================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Selection Distribution]")
+      print(f"{'─'*80}")
     
-    if not clusters:
+      if not clusters:
         print("No clusters available for selection")
         return []
     
-    total_clusters = len(clusters)
-    base_per_cluster = max(1, self.min_fit_clients // total_clusters)
-    remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
+      total_clusters = len(clusters)
+      base_per_cluster = max(1, self.min_fit_clients // total_clusters)
+      remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
     
-    print(f"Total selection budget: {self.min_fit_clients} clients")
-    print(f"Active clusters: {total_clusters}")
-    print(f"Base allocation per cluster: {base_per_cluster}")
-    print(f"Remaining to distribute: {remaining_budget}")
+      print(f"Total selection budget: {self.min_fit_clients} clients")
+      print(f"Active clusters: {total_clusters}")
+      print(f"Base allocation per cluster: {base_per_cluster}")
+      print(f"Remaining to distribute: {remaining_budget}")
     
-    # Allocate base quota to each cluster
-    cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
+      # Allocate base quota to each cluster
+      cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
     
-    # Distribute remaining budget proportionally by cluster size
-    if remaining_budget > 0:
+      # Distribute remaining budget proportionally by cluster size
+      if remaining_budget > 0:
         cluster_sizes = {cluster_id: len(clients) for cluster_id, clients in clusters.items()}
         total_size = sum(cluster_sizes.values())
         
@@ -792,21 +792,21 @@ save_dir="feature_visualizations_gpaf"
             cluster_allocations[cluster_id] += extra
             remaining_budget -= extra
     
-    print(f"\nFinal allocations:")
-    for cluster_id, allocation in sorted(cluster_allocations.items()):
+      print(f"\nFinal allocations:")
+      for cluster_id, allocation in sorted(cluster_allocations.items()):
         cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
         print(f"  Cluster {cluster_id} [{cluster_type}]: {allocation} clients")
 
-    # =================================================================
-    # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER
-    # =================================================================
-    print(f"\n{'─'*80}")
-    print(f"[Client Selection by Cluster]")
-    print(f"{'─'*80}")
+      # =================================================================
+      # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER
+      # =================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Client Selection by Cluster]")
+      print(f"{'─'*80}")
     
-    selected_clients_cids = []
+      selected_clients_cids = []
     
-    for cluster_id in sorted(clusters.keys()):
+      for cluster_id in sorted(clusters.keys()):
         cluster_clients = clusters[cluster_id]
         allocation = cluster_allocations[cluster_id]
         cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
@@ -834,13 +834,13 @@ save_dir="feature_visualizations_gpaf"
             selections = self.selection_counts.get(cid, 0)
             print(f"    {i+1}. Client {cid:15s} [{status:12s}] Score={score:.4f}, Selected={selections}x")
 
-    # =================================================================
-    # PHASE 6: PREPARE INSTRUCTIONS AND UPDATE TRACKING
-    # =================================================================
-    selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
+      # =================================================================
+      # PHASE 6: PREPARE INSTRUCTIONS AND UPDATE TRACKING
+      # =================================================================
+      selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
     
-    instructions = []
-    for client_id in selected_clients_cids:
+      instructions = []
+      for client_id in selected_clients_cids:
         if client_id in all_clients:
             client_proxy = all_clients[client_id]
             client_config = {
@@ -853,32 +853,32 @@ save_dir="feature_visualizations_gpaf"
             # Update selection counts for fairness tracking
             self.selection_counts[client_id] = self.selection_counts.get(client_id, 0) + 1
 
-    # =================================================================
-    # FINAL SUMMARY
-    # =================================================================
-    print(f"\n{'='*80}")
-    print(f"[Round {server_round}] FINAL SELECTION SUMMARY")
-    print(f"{'='*80}")
-    print(f"Total selected: {len(instructions)} clients")
+      # =================================================================
+      # FINAL SUMMARY
+      # =================================================================
+      print(f"\n{'='*80}")
+      print(f"[Round {server_round}] FINAL SELECTION SUMMARY")
+      print(f"{'='*80}")
+      print(f"Total selected: {len(instructions)} clients")
     
-    regular_selected = sum(1 for cid in selected_clients_cids 
+      regular_selected = sum(1 for cid in selected_clients_cids 
                           if cid in self.participated_clients)
-    new_selected = sum(1 for cid in selected_clients_cids 
+      new_selected = sum(1 for cid in selected_clients_cids 
                       if cid not in self.participated_clients)
     
-    print(f"  From domain clusters: {regular_selected} clients")
-    print(f"  From virtual cluster: {new_selected} clients")
+      print(f"  From domain clusters: {regular_selected} clients")
+      print(f"  From virtual cluster: {new_selected} clients")
     
-    print(f"\nSelection frequency (top 10):")
-    top_selected = sorted(self.selection_counts.items(), 
+      print(f"\nSelection frequency (top 10):")
+      top_selected = sorted(self.selection_counts.items(), 
                          key=lambda x: x[1], 
                          reverse=True)[:10]
-    for cid, count in top_selected:
+      for cid, count in top_selected:
         print(f"  {cid:15s}: {count}x")
     
-    print(f"{'='*80}\n")
+      print(f"{'='*80}\n")
 
-    return instructions
+      return instructions
 
 
 # Helper method to add to your strategy class
