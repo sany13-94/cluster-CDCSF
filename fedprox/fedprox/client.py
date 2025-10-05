@@ -252,6 +252,7 @@ class FederatedClient(fl.client.NumPyClient):
             raise e
 
     def get_properties(self, ins: GetPropertiesIns) -> GetPropertiesRes:
+        
         """Send prototypes to server when requested."""
         
         print(f"Client {self.client_id} - get_properties called")
