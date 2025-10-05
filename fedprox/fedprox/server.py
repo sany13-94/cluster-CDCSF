@@ -419,41 +419,28 @@ save_dir="feature_visualizations_gpaf"
         Compute fairness scores using self-regulating mechanism
         f_s[c] = 1 / (1 + R_c)
         
-        Where:
-        - R_c = v_c / (T/N): Selection ratio (Equation 7)
-        - v_c: Number of times client c has been selected
-        - T: Total rounds completed
-        - N: Total number of clients
         """
-        fairness_scores = {}
-        
-        N = len(client_ids)  # Total number of clients in pool
-        T = self.total_rounds_completed  # Total rounds
-        
-        # Ideal selections per client
-        ideal_selections = T / N if T > 0 else 1.0
-        
-        print(f"\n[Fairness Scores] Round {T}")
-        print(f"  Total rounds (T): {T}")
-        print(f"  Total clients (N): {N}")
-        print(f"  Ideal selections per client (T/N): {ideal_selections:.2f}")
-        
+        N = len(client_ids)
+        T = self.total_rounds_completed
+    
+        # Calculate total actual selections made
+        total_selections = sum(self.selection_counts.values())
+    
+        # Ideal selections per client based on ACTUAL selections
+        if total_selections > 0:
+          ideal_selections = total_selections / N
+        else:
+          ideal_selections = 1.0
+    
         for client_id in client_ids:
-            # Get selection count v_c
-            v_c = self.selection_counts.get(client_id, 0)
+          v_c = self.selection_counts.get(client_id, 0)
+          R_c = v_c / ideal_selections if ideal_selections > 0 else 0.0
+          fairness_score = 1.0 / (1.0 + R_c)
+          fairness_scores[client_id] = float(fairness_score)
+        
+        
             
-            # Calculate selection ratio R_c = v_c / (T/N)
-            if ideal_selections > 0:
-                R_c = v_c / ideal_selections
-            else:
-                R_c = 0.0
-            
-            # Fairness score: f_s = 1 / (1 + R_c) - Equation (8)
-            fairness_score = 1.0 / (1.0 + R_c)
-            
-            fairness_scores[client_id] = float(fairness_score)
-            
-            print(f"  Client {client_id}: v_c={v_c}, R_c={R_c:.3f}, f_s={fairness_score:.4f}")
+          print(f"  Client {client_id}: v_c={v_c}, R_c={R_c:.3f}, f_s={fairness_score:.4f}")
         
         return fairness_scores
     
