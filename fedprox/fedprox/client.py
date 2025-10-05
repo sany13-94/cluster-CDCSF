@@ -251,15 +251,12 @@ class FederatedClient(fl.client.NumPyClient):
             traceback.print_exc()
             raise e
 
-    def get_properties(self, ins: GetPropertiesIns) -> GetPropertiesRes:
-        
-        """Send prototypes to server when requested."""
+    def get_properties(self, config):
+        """Send prototypes to server when requested (NumPyClient interface)."""
         
         print(f"Client {self.client_id} - get_properties called")
         
-        status = Status(code=Code.OK, message="Success")
-        
-        if ins.config.get("request") == "prototypes":
+        if config and config.get("request") == "prototypes":
             print(f"Client {self.client_id} - Server requesting prototypes")
             
             # Always try to load from disk first
@@ -286,13 +283,10 @@ class FederatedClient(fl.client.NumPyClient):
                     
                     print(f"Client {self.client_id} - Successfully encoded prototypes ({len(prototypes_bytes)} bytes)")
                     
-                    return GetPropertiesRes(
-                        status=status,
-                        properties={
-                            "prototypes": prototypes_encoded,
-                            "class_counts": class_counts_encoded,
-                        }
-                    )
+                    return {
+                        "prototypes": prototypes_encoded,
+                        "class_counts": class_counts_encoded,
+                    }
                     
                 except Exception as e:
                     print(f"ERROR: Client {self.client_id} - Encoding error: {e}")
@@ -301,13 +295,10 @@ class FederatedClient(fl.client.NumPyClient):
             
             # No prototypes available
             print(f"Client {self.client_id} - No prototypes available")
-            return GetPropertiesRes(status=status, properties={})
+            return {}
         
         # Default response
-        return GetPropertiesRes(
-            status=status, 
-            properties={"simulation_index": str(self.client_id)}
-        )
+        return {"simulation_index": str(self.client_id)}
 
     def _extract_and_cache_prototypes(self, round_number):
         """Extract prototypes from trained model and cache them."""
@@ -429,6 +420,7 @@ class FederatedClient(fl.client.NumPyClient):
             print(f"ERROR: Client {self.client_id} - Failed to load prototypes: {e}")
             self.prototypes_from_last_round = None
             self.class_counts_from_last_round = None
+
 
     def train(self, net, trainloader, client_id, epochs, simulate_delay=False):
         """Train the network on the training set."""
