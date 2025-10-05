@@ -96,14 +96,24 @@ class GPAFStrategy(FedAvg):
         self.accuracy_history = defaultdict(float)
         self._current_accuracies = {}
         # ... existing initialization ...
+        # Core parameters from corrected methodology
+       
+      
+        self.clustering_interval = 10  # Cluster every 10 rounds
+        self.virtual_cluster_id = 999
         
+        # Tracking
+        self.training_times = {}
+        self.selection_counts = {}
+        self.participated_clients = set()
+        self.client_assignments = {}
+        self.cluster_prototypes = {}
         self.participated_clients = set()
         self.client_assignments = {}
         self.cluster_prototypes = {}
         self.last_round_participants = set()
         # Virtual cluster configuration
         self.use_virtual_cluster = True  # Enable virtual cluster for never-participated clients
-        self.virtual_cluster_id = -1  # Special ID for never-participated clients
         ema_alpha: float = 0.3,  # EMA smoothing for training times
         beta: float = 1.5,  # Penalty strength for reliability score
         initial_alpha1: float = 0.6,  # Initial reliability weight
