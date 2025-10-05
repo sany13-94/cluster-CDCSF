@@ -4,6 +4,7 @@ from typing import Dict, Union,Tuple
 import mlflow
 import flwr as fl
 import hydra
+import ray
 from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
@@ -265,6 +266,14 @@ def main(cfg: DictConfig) -> None:
    
     # Start simulation
     print(f'gpu number {cfg.client_resources.num_gpus}')
+    if not ray.is_initialized():
+        print("Initialisation du moteur Ray...")
+        # L'argument 'num_gpus' ici FORCE Ray à réserver un GPU pour son propre fonctionnement 
+        # et à l'enregistrer dans son système de ressources.
+        # Nous utilisons torch.cuda.device_count() pour que Ray sache combien il y a de GPU.
+        ray.init(log_to_driver=True, logging_level=30, num_gpus=torch.cuda.device_count()) 
+        print(f"Ressources Ray disponibles: {ray.available_resources()}")
+    # --
     server= ServerApp(server_fn=server_fn)
     history = run_simulation(
         client_app=client,
@@ -274,7 +283,6 @@ def main(cfg: DictConfig) -> None:
             "num_cpus": cfg.client_resources.num_cpus,
             "num_gpus": cfg.client_resources.num_gpus,
         },
-         client_resources=CLIENT_RESOURCES,
        
       
     )
