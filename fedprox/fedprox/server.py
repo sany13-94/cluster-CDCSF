@@ -420,6 +420,7 @@ save_dir="feature_visualizations_gpaf"
         f_s[c] = 1 / (1 + R_c)
         
         """
+        fairness_scores = {}
         N = len(client_ids)
         T = self.total_rounds_completed
     
