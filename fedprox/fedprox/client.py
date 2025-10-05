@@ -480,7 +480,8 @@ cfg=None  ,
     import mlflow
     # be a straggler. This is done so at each round the proportion of straggling
     client = MlflowClient()
-    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     def client_fn(context: Context) -> Client:
         # Access the client ID (cid) from the context
       cid = context.node_config["partition-id"]
@@ -488,7 +489,7 @@ cfg=None  ,
       experiment = mlflow.get_experiment_by_name(experiment_name)
       if "mlflow_id" not in context.state.config_records:
             context.state.config_records["mlflow_id"] = ConfigRecord()
-      device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+      print(f'fffkkfj : {device}')
 
       #check the client id has a run id in the context.state
       run_ids = context.state.config_records["mlflow_id"]
