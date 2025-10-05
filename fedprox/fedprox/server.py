@@ -109,7 +109,7 @@ class GPAFStrategy(FedAvg):
         initial_alpha1: float = 0.6,  # Initial reliability weight
         initial_alpha2: float = 0.4,  # Initial fairness weight
         phase_threshold: int = 20,  # Round to switch weight emphasis
-        total_rounds: int = 100,
+        total_rounds: int = 3,
       
 
 
@@ -503,6 +503,7 @@ save_dir="feature_visualizations_gpaf"
         Early training: Emphasize reliability (fast convergence)
         Late training: Emphasize fairness (balanced participation)
         """
+        print(f'ss {server_round} and ee {self.total_rounds}')
         progress = server_round / self.total_rounds
         
         if progress < 0.2:
@@ -568,42 +569,60 @@ save_dir="feature_visualizations_gpaf"
     
       
    
-    def configure_fit(self, server_round: int, parameters: Parameters, client_manager: ClientManager) -> List[Tuple[ClientProxy, FitIns]]:
-     
-     """
-      Client selection with:
-      1. Clustering on participated clients
-      2. Virtual cluster for never-participated clients
-        3. Resource-aware selection within each cluster (including virtual)
-     """
+    def configure_fit(
+    self, 
+    server_round: int, 
+    parameters: Parameters, 
+    client_manager: ClientManager
+) -> List[Tuple[ClientProxy, FitIns]]:
+    """
+    Enhanced client selection with:
+    1. Comprehensive clustering on ALL available clients (not just participated)
+    2. Virtual cluster for never-participated clients
+    3. Resource-aware selection within each cluster using corrected methodology
+    """
     
-     print(f"\n[CSMDA] ========== Configuring round {server_round} ==========")
-     all_clients = client_manager.all()
-     available_client_cids = list(all_clients.keys())
+    print(f"\n{'='*80}")
+    print(f"[Round {server_round}] CONFIGURE_FIT - Resource-Aware Fair Selection")
+    print(f"{'='*80}")
+    
+    # Get all available clients
+    all_clients = client_manager.all()
+    available_client_cids = list(all_clients.keys())
 
-     if not available_client_cids:
-        print(f"[CSMDA] Round {server_round}: No clients available.")
+    if not available_client_cids:
+        print(f"[Round {server_round}] No clients available.")
         return []
 
-     print(f"[CSMDA] Total available clients: {len(available_client_cids)}")
-     print(f"[CSMDA] Clients who have participated before: {len(self.participated_clients)}")
-
-     # Step 1: Categorize clients
-     participated_available = [cid for cid in available_client_cids if cid in self.participated_clients]
-     never_participated = [cid for cid in available_client_cids if cid not in self.participated_clients]
+    print(f"\n[Client Status]")
+    print(f"  Total available clients: {len(available_client_cids)}")
+    print(f"  Previously participated: {len(self.participated_clients)}")
     
-     print(f"[CSMDA] Available participated clients: {len(participated_available)}")
-     print(f"[CSMDA] Available never-participated clients: {len(never_participated)}")
-
-     # Step 2: Collect prototypes from participated clients
-     all_prototypes_list = []
-     all_client_ids = []
-     class_counts_list = []
-     clients_with_prototypes = []
+    # Categorize clients
+    participated_available = [cid for cid in available_client_cids 
+                             if cid in self.participated_clients]
+    never_participated = [cid for cid in available_client_cids 
+                         if cid not in self.participated_clients]
     
-     if participated_available:
-        print(f"\n[CSMDA] Collecting prototypes from {len(participated_available)} participated clients...")
+    print(f"  Available participated clients: {len(participated_available)}")
+    print(f"  Available never-participated clients: {len(never_participated)}")
+
+    # =================================================================
+    # PHASE 1: COMPREHENSIVE PROTOTYPE COLLECTION (Every N rounds)
+    # =================================================================
+    clustering_round = (server_round % self.clustering_interval == 0)
+    
+    if clustering_round and participated_available:
+        print(f"\n{'─'*80}")
+        print(f"[Clustering Round] Collecting prototypes from ALL available clients")
+        print(f"{'─'*80}")
         
+        all_prototypes_list = []
+        all_client_ids = []
+        class_counts_list = []
+        clients_with_prototypes = []
+        
+        # CRITICAL: Collect from ALL available participated clients
         for cid in participated_available:
             client_proxy = all_clients[cid]
             try:
@@ -627,162 +646,201 @@ save_dir="feature_visualizations_gpaf"
                             class_counts_list.append(class_counts)
                             clients_with_prototypes.append(cid)
                             
-                            source = "fresh (t-1)" if cid in self.last_round_participants else "saved (earlier)"
-                            print(f"[CSMDA] ✅ Client {cid}: Prototypes [{source}]")
+                            source = "from round t-1" if cid in self.last_round_participants else "cached"
+                            print(f"  ✓ Client {cid}: Prototypes collected [{source}]")
                             
                     except Exception as decode_error:
-                        print(f"[CSMDA] ❌ Client {cid}: Decode error - {decode_error}")
+                        print(f"  ✗ Client {cid}: Decode error - {decode_error}")
                 else:
-                    print(f"[CSMDA] ⚠️ Client {cid}: No prototypes")
+                    print(f"  ⚠ Client {cid}: No prototypes available")
                     
             except Exception as e:
-                print(f"[CSMDA] ⚠️ Client {cid}: Communication failed - {e}")
+                print(f"  ⚠ Client {cid}: Communication failed - {e}")
 
-     print(f"\n[CSMDA] Prototype collection summary:")
-     print(f"  - Participated clients with prototypes: {len(clients_with_prototypes)}")
+        print(f"\n[Prototype Collection Summary]")
+        print(f"  Successfully collected: {len(clients_with_prototypes)}/{len(participated_available)} clients")
 
-     # Step 3: Perform clustering on participated clients (if enough available)
-     clustering_performed = False
-    
-     if len(clients_with_prototypes) >= self.num_clusters:
-        print(f"\n[CSMDA] 🔄 Performing EM clustering on {len(clients_with_prototypes)} participated clients...")
-        
-        if not self.cluster_prototypes:
-            print("[CSMDA] Initializing cluster prototypes")
-            self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
-        
-        global_assignments = self._e_step(all_prototypes_list, all_client_ids)
-        self.cluster_prototypes = self._m_step(
-            all_prototypes_list, 
-            all_client_ids, 
-            global_assignments, 
-            class_counts_list
-        )
-        
-        for client_id, cluster_id in global_assignments.items():
-            self.client_assignments[client_id] = cluster_id
-        
-        print(f"\n[CSMDA] Clustering results:")
-        for cluster_id in range(self.num_clusters):
-            cluster_clients = [cid for cid, clust in self.client_assignments.items() 
-                             if clust == cluster_id]
-            print(f"  - Cluster {cluster_id}: {len(cluster_clients)} clients")
-        
-        clustering_performed = True
-     else:
-        print(f"\n[CSMDA] ⚠️ Not enough participated clients ({len(clients_with_prototypes)}) "
-              f"for clustering (need {self.num_clusters})")
-
-     # Step 4: Organize clients into clusters (including virtual cluster)
-     clusters = defaultdict(list)
-    
-     # Add participated clients to their assigned clusters
-     for cid in clients_with_prototypes:
-        cluster_id = self.client_assignments.get(cid, 0)
-        clusters[cluster_id].append(cid)
-    
-     # Add never-participated clients to virtual cluster
-     if never_participated and self.use_virtual_cluster:
-        clusters[self.virtual_cluster_id] = never_participated
-        print(f"\n[CSMDA] 📦 Virtual Cluster {self.virtual_cluster_id}: {len(never_participated)} never-participated clients")
-    
-     # Display all clusters
-     print(f"\n[CSMDA] All clusters (including virtual):")
-     for cluster_id, cluster_clients in clusters.items():
-        cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Regular"
-        print(f"  - Cluster {cluster_id} [{cluster_type}]: {len(cluster_clients)} clients")
-
-     # Step 5: Compute selection scores for ALL clients
-     print(f"\n[CSMDA] Computing resource-aware scores for all clients...")
-    
-     all_available_clients = participated_available + never_participated
-     alpha_1, alpha_2 = self._adapt_weights(server_round)
-    
-     # Compute scores
-     all_scores = {}
-    
-     for cid in all_available_clients:
-        if cid in self.participated_clients:
-            # Participated clients: use actual reliability and fairness
-            reliability_scores = self._compute_reliability_scores([cid])
-            fairness_scores = self._compute_fairness_scores([cid])
-            reliability = reliability_scores.get(cid, 0.5)
-            fairness = fairness_scores.get(cid, 0.5)
-        else:
-            # Never-participated clients: neutral reliability, high fairness
-            reliability = 1.0  # Neutral (no history)
-            fairness = 1.0     # Maximum fairness (never selected)
-        
-        all_scores[cid] = (alpha_1 * reliability) + (alpha_2 * fairness)
-    
-     print(f"[CSMDA] Computed scores for {len(all_scores)} clients")
-     print(f"[CSMDA] Score weights: reliability={alpha_1:.2f}, fairness={alpha_2:.2f}")
-
-     # Step 6: Distribute selection budget across clusters (proportional + min guarantee)
-     selected_clients_cids = []
-    
-     if clusters:
-        total_clusters = len(clusters)
-        base_per_cluster = max(1, self.min_fit_clients // total_clusters)
-        remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
-        
-        print(f"\n[CSMDA] 📊 Selection distribution:")
-        print(f"  - Total clusters: {total_clusters}")
-        print(f"  - Base allocation per cluster: {base_per_cluster}")
-        print(f"  - Remaining budget to distribute: {remaining_budget}")
-        
-        # First pass: allocate base quota to each cluster
-        cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
-        
-        # Second pass: distribute remaining budget proportionally by cluster size
-        if remaining_budget > 0:
-            cluster_sizes = {cluster_id: len(clients) for cluster_id, clients in clusters.items()}
-            total_size = sum(cluster_sizes.values())
+        # Perform EM clustering if enough clients
+        if len(clients_with_prototypes) >= self.num_clusters:
+            print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
             
-            for cluster_id in sorted(clusters.keys(), key=lambda x: cluster_sizes[x], reverse=True):
-                if remaining_budget <= 0:
-                    break
-                # Give extra slots to larger clusters
-                extra = min(remaining_budget, max(1, int(remaining_budget * cluster_sizes[cluster_id] / total_size)))
-                cluster_allocations[cluster_id] += extra
-                remaining_budget -= extra
-        
-        # Select clients from each cluster based on scores
-        for cluster_id, cluster_clients in clusters.items():
-            allocation = cluster_allocations[cluster_id]
+            # Initialize cluster prototypes if first time
+            if not self.cluster_prototypes:
+                print("  Initializing cluster prototypes...")
+                self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
             
-            # Sort cluster clients by score
-            cluster_clients_sorted = sorted(
-                cluster_clients,
-                key=lambda cid: all_scores.get(cid, 0.0),
-                reverse=True
+            # E-step: Assign clients to clusters
+            global_assignments = self._e_step(all_prototypes_list, all_client_ids)
+            
+            # M-step: Update cluster prototypes
+            self.cluster_prototypes = self._m_step(
+                all_prototypes_list, 
+                all_client_ids, 
+                global_assignments, 
+                class_counts_list
             )
             
-            # Select top clients
-            num_to_select = min(allocation, len(cluster_clients_sorted))
-            cluster_selection = cluster_clients_sorted[:num_to_select]
-            selected_clients_cids.extend(cluster_selection)
+            # Update cluster assignments for ALL clients
+            for client_id, cluster_id in global_assignments.items():
+                self.client_assignments[client_id] = cluster_id
             
-            cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Regular"
-            print(f"  - Cluster {cluster_id} [{cluster_type}]: Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
-            
-            # Show top selections with scores
-            for i, cid in enumerate(cluster_selection[:3]):
-                score = all_scores.get(cid, 0.0)
-                status = "new" if cid not in self.participated_clients else "participated"
-                print(f"    {i+1}. Client {cid} [{status}]: score={score:.3f}")
-    
-     else:
-        # Fallback: select all available up to limit
-        print(f"\n[CSMDA] ⚠️ No clusters available, selecting from all clients")
-        all_sorted = sorted(all_available_clients, key=lambda cid: all_scores.get(cid, 0.0), reverse=True)
-        selected_clients_cids = all_sorted[:self.min_fit_clients]
+            print(f"\n[Clustering Results]")
+            for cluster_id in range(self.num_clusters):
+                cluster_clients = [cid for cid, clust in self.client_assignments.items() 
+                                 if clust == cluster_id]
+                print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
+                if cluster_clients:
+                    print(f"    Members: {cluster_clients[:5]}{'...' if len(cluster_clients) > 5 else ''}")
+        else:
+            print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, only have {len(clients_with_prototypes)}")
 
-     # Step 7: Prepare instructions
-     selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
+    # =================================================================
+    # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS
+    # =================================================================
+    clusters = defaultdict(list)
     
-     instructions = []
-     for client_id in selected_clients_cids:
+    # Add participated clients to their assigned clusters
+    for cid in participated_available:
+        if cid in self.client_assignments:
+            cluster_id = self.client_assignments[cid]
+            clusters[cluster_id].append(cid)
+        else:
+            # Clients without assignment go to cluster 0 by default
+            clusters[0].append(cid)
+    
+    # Add never-participated clients to virtual cluster
+    if never_participated and self.use_virtual_cluster:
+        clusters[self.virtual_cluster_id] = never_participated
+        print(f"\n[Virtual Cluster {self.virtual_cluster_id}] {len(never_participated)} new clients")
+    
+    # Display cluster distribution
+    print(f"\n[Cluster Distribution]")
+    for cluster_id in sorted(clusters.keys()):
+        cluster_clients = clusters[cluster_id]
+        cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+        print(f"  Cluster {cluster_id} [{cluster_type}]: {len(cluster_clients)} clients")
+
+    # =================================================================
+    # PHASE 3: COMPUTE GLOBAL SELECTION SCORES
+    # =================================================================
+    print(f"\n{'─'*80}")
+    print(f"[Score Computation] Round {server_round}")
+    print(f"{'─'*80}")
+    
+    # Get adaptive weights
+    alpha_1, alpha_2 = self._adapt_weights(server_round)
+    print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
+    
+    # Compute scores for ALL available clients
+    all_scores = {}
+    
+    # Process participated clients (use actual methodology)
+    if participated_available:
+        print(f"\n[Participated Clients] Computing scores using full methodology...")
+        participated_scores = self.compute_global_selection_scores(
+            participated_available, 
+            server_round
+        )
+        all_scores.update(participated_scores)
+    
+    # Process never-participated clients (special handling)
+    if never_participated:
+        print(f"\n[New Clients] Assigning initial scores...")
+        for cid in never_participated:
+            # New clients get:
+            # - Maximum fairness (never selected): f_s = 1.0
+            # - Neutral reliability (unknown): A_s = 0.5 (middle value)
+            reliability = 0.5  # Neutral - no history
+            fairness = 1.0     # Maximum - never selected
+            
+            all_scores[cid] = (alpha_1 * reliability) + (alpha_2 * fairness)
+            print(f"  Client {cid}: R={reliability:.3f}, F={fairness:.3f}, Score={all_scores[cid]:.3f}")
+
+    # =================================================================
+    # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS
+    # =================================================================
+    print(f"\n{'─'*80}")
+    print(f"[Selection Distribution]")
+    print(f"{'─'*80}")
+    
+    if not clusters:
+        print("No clusters available for selection")
+        return []
+    
+    total_clusters = len(clusters)
+    base_per_cluster = max(1, self.min_fit_clients // total_clusters)
+    remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
+    
+    print(f"Total selection budget: {self.min_fit_clients} clients")
+    print(f"Active clusters: {total_clusters}")
+    print(f"Base allocation per cluster: {base_per_cluster}")
+    print(f"Remaining to distribute: {remaining_budget}")
+    
+    # Allocate base quota to each cluster
+    cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
+    
+    # Distribute remaining budget proportionally by cluster size
+    if remaining_budget > 0:
+        cluster_sizes = {cluster_id: len(clients) for cluster_id, clients in clusters.items()}
+        total_size = sum(cluster_sizes.values())
+        
+        for cluster_id in sorted(clusters.keys(), key=lambda x: cluster_sizes[x], reverse=True):
+            if remaining_budget <= 0:
+                break
+            proportion = cluster_sizes[cluster_id] / total_size if total_size > 0 else 0
+            extra = min(remaining_budget, max(1, int(remaining_budget * proportion)))
+            cluster_allocations[cluster_id] += extra
+            remaining_budget -= extra
+    
+    print(f"\nFinal allocations:")
+    for cluster_id, allocation in sorted(cluster_allocations.items()):
+        cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+        print(f"  Cluster {cluster_id} [{cluster_type}]: {allocation} clients")
+
+    # =================================================================
+    # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER
+    # =================================================================
+    print(f"\n{'─'*80}")
+    print(f"[Client Selection by Cluster]")
+    print(f"{'─'*80}")
+    
+    selected_clients_cids = []
+    
+    for cluster_id in sorted(clusters.keys()):
+        cluster_clients = clusters[cluster_id]
+        allocation = cluster_allocations[cluster_id]
+        cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+        
+        print(f"\n[Cluster {cluster_id} - {cluster_type}]")
+        
+        # Sort by global score (descending)
+        cluster_clients_sorted = sorted(
+            cluster_clients,
+            key=lambda cid: all_scores.get(cid, 0.0),
+            reverse=True
+        )
+        
+        # Select top-k clients
+        num_to_select = min(allocation, len(cluster_clients_sorted))
+        cluster_selection = cluster_clients_sorted[:num_to_select]
+        selected_clients_cids.extend(cluster_selection)
+        
+        print(f"  Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
+        
+        # Show detailed scores for top selections
+        for i, cid in enumerate(cluster_selection[:5]):
+            score = all_scores.get(cid, 0.0)
+            status = "NEW" if cid not in self.participated_clients else "participated"
+            selections = self.selection_counts.get(cid, 0)
+            print(f"    {i+1}. Client {cid:15s} [{status:12s}] Score={score:.4f}, Selected={selections}x")
+
+    # =================================================================
+    # PHASE 6: PREPARE INSTRUCTIONS AND UPDATE TRACKING
+    # =================================================================
+    selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
+    
+    instructions = []
+    for client_id in selected_clients_cids:
         if client_id in all_clients:
             client_proxy = all_clients[client_id]
             client_config = {
@@ -791,49 +849,85 @@ save_dir="feature_visualizations_gpaf"
             }
             
             instructions.append((client_proxy, FitIns(parameters, client_config)))
+            
+            # Update selection counts for fairness tracking
             self.selection_counts[client_id] = self.selection_counts.get(client_id, 0) + 1
 
-     print(f"\n[CSMDA] ✅ Round {server_round} FINAL SELECTION:")
-     print(f"  - Total selected: {len(instructions)} clients")
-     print(f"  - Breakdown:")
-     print(f"    * From regular clusters: {sum(1 for cid in selected_clients_cids if cid in self.participated_clients)}")
-     print(f"    * From virtual cluster: {sum(1 for cid in selected_clients_cids if cid not in self.participated_clients)}")
-     print(f"  - Selection counts (top 5): {dict(sorted(self.selection_counts.items(), key=lambda x: x[1], reverse=True)[:5])}")
-     print(f"[CSMDA] ========== End of round {server_round} configuration ==========\n")
-
-     return instructions
-
-    def _initialize_clusters(self, all_prototypes):
-      """Initialize clusters from most diverse clients."""
-      num_clients = len(all_prototypes)
-      assert num_clients >= self.num_clusters, \
-        f"Need at least {self.num_clusters} clients, got {num_clients}"
-
-      client_diversity = []
-      for i, proto_dict in enumerate(all_prototypes):
-        diversity = len([v for v in proto_dict.values() if np.linalg.norm(v) > 0])
-        client_diversity.append((i, diversity))
+    # =================================================================
+    # FINAL SUMMARY
+    # =================================================================
+    print(f"\n{'='*80}")
+    print(f"[Round {server_round}] FINAL SELECTION SUMMARY")
+    print(f"{'='*80}")
+    print(f"Total selected: {len(instructions)} clients")
     
-      client_diversity.sort(key=lambda x: x[1], reverse=True)
-      selected_indices = [idx for idx, _ in client_diversity[:self.num_clusters]]
+    regular_selected = sum(1 for cid in selected_clients_cids 
+                          if cid in self.participated_clients)
+    new_selected = sum(1 for cid in selected_clients_cids 
+                      if cid not in self.participated_clients)
+    
+    print(f"  From domain clusters: {regular_selected} clients")
+    print(f"  From virtual cluster: {new_selected} clients")
+    
+    print(f"\nSelection frequency (top 10):")
+    top_selected = sorted(self.selection_counts.items(), 
+                         key=lambda x: x[1], 
+                         reverse=True)[:10]
+    for cid, count in top_selected:
+        print(f"  {cid:15s}: {count}x")
+    
+    print(f"{'='*80}\n")
 
-      cluster_prototypes = {}
-      for cluster_id, client_idx in enumerate(selected_indices):
-        proto_dict = all_prototypes[client_idx]
-        cluster_prototypes[cluster_id] = {}
+    return instructions
+
+
+# Helper method to add to your strategy class
+def _initialize_clusters(self, prototypes_list):
+    """Initialize cluster prototypes using k-means++ style initialization"""
+    import numpy as np
+    
+    # Convert prototypes to vectors for initialization
+    proto_vectors = []
+    for prototypes in prototypes_list:
+        # Flatten all class prototypes into single vector
+        all_protos = []
+        for class_id in sorted(prototypes.keys()):
+            all_protos.append(prototypes[class_id])
+        if all_protos:
+            proto_vectors.append(np.concatenate(all_protos))
+    
+    if not proto_vectors:
+        return {}
+    
+    # Simple k-means++ initialization
+    proto_array = np.array(proto_vectors)
+    n_samples = len(proto_array)
+    
+    # Random first center
+    centers_idx = [np.random.randint(n_samples)]
+    
+    # Select remaining centers
+    for _ in range(self.num_clusters - 1):
+        # Compute distances to nearest center
+        distances = np.array([
+            min(np.linalg.norm(proto_array[i] - proto_array[c]) 
+                for c in centers_idx)
+            for i in range(n_samples)
+        ])
         
-        for class_id, proto in proto_dict.items():
-            if hasattr(proto, 'numpy'):
-                proto_np = proto.numpy()
-            elif hasattr(proto, 'detach'):
-                proto_np = proto.detach().cpu().numpy()
-            else:
-                proto_np = np.array(proto)
-            
-            cluster_prototypes[cluster_id][class_id] = proto_np.astype(np.float32).copy()
+        # Select next center with probability proportional to distance
+        probs = distances / distances.sum()
+        next_center = np.random.choice(n_samples, p=probs)
+        centers_idx.append(next_center)
+    
+    # Convert back to prototype format
+    cluster_prototypes = {}
+    for k, idx in enumerate(centers_idx):
+        cluster_prototypes[k] = prototypes_list[idx]
+    
+    return cluster_prototypes
 
-      print(f"[Init] Initialized {self.num_clusters} clusters")
-      return cluster_prototypes
+    
 
     def _e_step(self, all_prototypes, client_ids):
       """E-step: Assign clients to clusters."""
