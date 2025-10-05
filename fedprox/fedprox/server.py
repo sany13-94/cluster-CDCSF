@@ -526,7 +526,7 @@ save_dir="feature_visualizations_gpaf"
         if cid in self.participated_clients:
             # Participated clients: use actual reliability and fairness
             reliability_scores = self._compute_reliability_scores([cid])
-            fairness_scores = self._compute_fairness_scores([cid], server_round)
+            fairness_scores = self._compute_fairness_scores([cid])
             reliability = reliability_scores.get(cid, 0.5)
             fairness = fairness_scores.get(cid, 0.5)
         else:
