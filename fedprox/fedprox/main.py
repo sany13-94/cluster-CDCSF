@@ -163,7 +163,7 @@ def get_server_fn(mlflow=None):
       strategyi = FedAVGWithEval(
       fraction_fit=1.0,  # Train with 50% of available clients
       fraction_evaluate=0.5,  # Evaluate with all available clients
-      min_fit_clients=3,
+      min_fit_clients=8,
       min_evaluate_clients=2,
       min_available_clients=3,
       evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,  # Add this
@@ -177,8 +177,10 @@ def get_server_fn(mlflow=None):
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
         #fraction_evaluate=1.0,
-        min_fit_clients=3,  # Set minimum number of clients for training
-        min_evaluate_clients=2,
+        min_fit_clients=8,  # Set minimum number of clients for training
+        min_evaluate_clients=8,
+        min_available_clients=8,
+
         #on_fit_config_fn=fit_config_fn,
      
       )
