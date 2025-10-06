@@ -20,6 +20,8 @@ from flwr.client import NumPyClient, Client,  NumPyClient
 import matplotlib.pyplot as plt # Utilisé pour la visualisation
 import time
 from flwr.common import Status, Code, parameters_to_ndarrays ,ConfigsRecord, MetricsRecord, ParametersRecord ,Context, ConfigRecord
+# Importer la classe d'analyse des pixels
+from fedprox.pixeldistributionanalyzer import PixelDistributionAnalyzer # NOUVEAU
 
 from  mlflow.tracking import MlflowClient
 import base64
@@ -118,92 +120,7 @@ class FederatedClient(fl.client.NumPyClient):
     # NOUVELLES FONCTIONS DE VISUALISATION DE DISTRIBUTION
     # =======================================================
 
-    def _calculate_pixel_distribution(self) -> Tuple[np.ndarray, np.ndarray, float, float]:
-        
-        all_pixels = []
-        print(f"Client {self.client_id}: Démarrage du calcul de la distribution des pixels...")
-
-        # Itérer sur le DataLoader
-        try:
-            for images, _ in self.traindata:
-                # Convertir en NumPy et aplatir
-                if isinstance(images, torch.Tensor):
-                    images_np = images.cpu().numpy()
-                elif isinstance(images, np.ndarray):
-                    images_np = images
-                else:
-                    continue
-                
-                # Normalisation : Multiplier par 255 si les valeurs sont entre 0 et 1
-                if images_np.max() <= 1.01: 
-                    images_np = images_np * 255.0
-                
-                # Aplatir et ajouter tous les pixels
-                all_pixels.append(images_np.flatten())
-                
-        except Exception as e:
-            print(f"Erreur lors de l'itération sur le DataLoader du client {self.client_id}: {e}")
-            return np.array([]), np.array([]), 0.0, 0.0
-
-        if not all_pixels:
-            print(f"Client {self.client_id}: Aucun pixel trouvé.")
-            return np.array([]), np.array([]), 0.0, 0.0
-            
-        all_pixels_flat = np.concatenate(all_pixels).astype(np.float32)
-        
-        # Calculer l'histogramme pour la plage standard des intensités (0 à 255)
-        hist, bin_edges = np.histogram(all_pixels_flat, bins=256, range=(0, 256))
-        
-        # Calculer les statistiques clés
-        mean_intensity = np.mean(all_pixels_flat) if all_pixels_flat.size > 0 else 0.0
-        std_intensity = np.std(all_pixels_flat) if all_pixels_flat.size > 0 else 0.0
-
-        print(f"Client {self.client_id}: Calcul terminé. Moyenne: {mean_intensity:.2f}, Écart-type: {std_intensity:.2f}")
-
-        return hist, bin_edges, mean_intensity, std_intensity
-
-    def visualize_pixel_distribution(self, round_number: int):
-        """
-        Visualise la distribution des pixels, imprime les statistiques et sauve le graphique.
-        """
-        hist, bin_edges, mean, std = self._calculate_pixel_distribution()
-        
-        if hist.size == 0:
-            print(f"Client {self.client_id}: Impossible de visualiser. Distribution non calculée.")
-            return
-
-        print("\n" + "="*80)
-        print(f"--- Client {self.client_id} - Distribution des Pixels (Round {round_number}) ---")
-        print(f"Moyenne d'intensité des pixels: {mean:.2f}")
-        print(f"Écart-type d'intensité des pixels: {std:.2f}")
-        print("Les variations d'écart-type et de moyenne indiquent un décalage de domaine.")
-        print("="*80 + "\n")
-
-        # --- Partie de Plotting (Génère une image si Matplotlib est fonctionnel) ---
-        try:
-            plt.figure(figsize=(8, 5))
-            # Utiliser plt.bar pour afficher l'histogramme calculé
-            # bin_edges[:-1] donne les positions de départ des bins
-            plt.bar(bin_edges[:-1], hist, width=1, color='#4CAF50', edgecolor='black', alpha=0.7)
-            
-            plt.axvline(mean, color='#FF5722', linestyle='dashed', linewidth=2, label=f'Moyenne: {mean:.2f}')
-            
-            plt.title(f'Distribution des Pixels - Client {self.client_id} (Round {round_number})', fontsize=14)
-            plt.xlabel('Intensité des Pixels (0-255)', fontsize=12)
-            plt.ylabel('Fréquence (Nombre de Pixels)', fontsize=12)
-            plt.legend()
-            plt.grid(axis='y', alpha=0.3)
-            plt.tight_layout()
-            
-            # Sauvegarde de la figure
-            plot_filename = f"client_{self.client_id}_pixel_dist_r{round_number}.png"
-            plt.savefig(plot_filename)
-            plt.close() 
-            print(f"Client {self.client_id}: Graphique de distribution sauvegardé sous {plot_filename}")
-
-        except Exception as e:
-            print(f"Client {self.client_id}: Avertissement - Impossible de sauvegarder le graphique. Assurez-vous que Matplotlib est installé et que l'environnement permet le plotting. Erreur: {e}")
-
+    
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
         try:
@@ -216,7 +133,11 @@ class FederatedClient(fl.client.NumPyClient):
             start_time = time.time()
             # On ne le fait que pour la première ronde pour des raisons de performance.
             if round_number == 1 :
-                 self.visualize_pixel_distribution(round_number)
+              # Il prend le client_id et le DataLoader d'entraînement pour analyser la distribution locale.
+              self.pixel_analyzer = PixelDistributionAnalyzer(
+            client_id=self.client_id, 
+            traindata_loader=self.traindata # Utilisation du DataLoader d'entraînement
+        )
             # ----------------------------------------------------
 
             

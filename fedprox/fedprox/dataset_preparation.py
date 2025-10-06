@@ -186,8 +186,10 @@ class LazyPathMNIST(Dataset):
         img = self.imgs[idx]
         label = self.labels[idx].item()
         # img: NumPy array (HWC) -> torch.Tensor (CHW, scaled 0-1)
-        
-        img = self.to_tensor_converter(img)
+        if self.transform:
+
+          img = self.to_tensor_converter(img)
+          img = self.transform(img)
         
         # Retourne l'image brute (NumPy array) et le label (int)
         return img, label
