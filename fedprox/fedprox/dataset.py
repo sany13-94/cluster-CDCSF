@@ -6,7 +6,7 @@ import torch
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, random_split
 import os
-from fedprox.dataset_preparation import _partition_data,build_transform, create_domain_shifted_loaders,buid_domain_transform, DataSplitManager,build_transform,make_pathmnist_clients_final
+from fedprox.dataset_preparation import _partition_data, create_domain_shifted_loaders, DataSplitManager,make_pathmnist_clients_final
 
 
 def get_split_path(num_clients ,split_type: str,seed=42,domain_shift=False):
@@ -86,7 +86,6 @@ def load_datasets(  # pylint: disable=too-many-arguments
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
   
     print(f"Dataset partitioning config: {config}")
-    transform = build_transform()
     
     #print(f' train loader example {datasets[0]}')
     # Create domain-shifted dataloaders
