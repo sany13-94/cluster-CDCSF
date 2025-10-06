@@ -696,10 +696,12 @@ save_dir="feature_visualizations_gpaf"
         if cid in self.client_assignments:
             cluster_id = self.client_assignments[cid]
             clusters[cluster_id].append(cid)
-      print(f'=== clusters of training {clusters} and number of clusters is {len(clusters)}')
         else:
             # Clients without assignment go to cluster 0 by default
             clusters[0].append(cid)
+      
+      print(f'=== clusters of training {clusters} and number of clusters is {len(clusters)}')
+
     
       # Add never-participated clients to virtual cluster
       if never_participated and self.use_virtual_cluster:
