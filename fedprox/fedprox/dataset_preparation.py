@@ -37,11 +37,7 @@ warnings.filterwarnings(
     category=UserWarning
 )
 def build_augmentation_transform():  
-    """
-    Construit les transformations d'AUGMENTATION de données (Random Flip, Rotation, Blur). 
-    Ces transformations opèrent sur un torch.Tensor (CHW) mis à l'échelle [0, 1] ou normalisé.
-    Ces transformations sont stochastiques et utilisées SEULEMENT pour l'entraînement.
-    """
+    
     t = []
     t.append(transforms.RandomHorizontalFlip(p=0.5))
     t.append(transforms.RandomRotation(degrees=45))
@@ -370,7 +366,7 @@ def make_pathmnist_clients_final(
     )
 
     return train_loaders, val_loaders
-    
+
 def create_domain_shifted_loaders(
    root_path,
     num_clients: int,
