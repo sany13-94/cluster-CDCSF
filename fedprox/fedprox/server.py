@@ -84,6 +84,7 @@ class GPAFStrategy(FedAvg):
         self.warmup_rounds = 10  # Stage 1 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
+        self.clustering_interval = 10
         
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
