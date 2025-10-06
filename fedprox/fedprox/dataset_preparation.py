@@ -370,7 +370,7 @@ def make_pathmnist_clients_final(
     )
 
     return train_loaders, val_loaders
-
+    
 def create_domain_shifted_loaders(
    root_path,
     num_clients: int,
