@@ -107,7 +107,6 @@ class GPAFStrategy(FedAvg):
         self.selection_counts = {}
         self.participated_clients = set()
         self.client_assignments = {}
-        self.cluster_prototypes = {}
         self.participated_clients = set()
         self.client_assignments = {}
         self.cluster_prototypes = {}
@@ -124,14 +123,11 @@ class GPAFStrategy(FedAvg):
 
 
         # NEW/MODIFIED FAIRNESS ATTRIBUTES
-        initial_target_selections= 3
-        max_target_selections = 10
+      
         reliability_lambda = 0.05
         acc_drop_threshold  = 0.005
         self.client_targets = defaultdict(lambda: initial_target_selections)
         self.initial_target_selections = initial_target_selections
-        self.max_target_selections = max_target_selections
-        self.acc_drop_threshold = acc_drop_threshold
 
         # NEW RELIABILITY ATTRIBUTE
         self.reliability_lambda = reliability_lambda
@@ -142,8 +138,6 @@ class GPAFStrategy(FedAvg):
         self.alpha = 0.3  # EMA decay for training time
         self.beta = 0.2   # fairness boost increment
         self.epsilon = 0.1  # straggler tolerance (10% of T_max)
-        self.target_selections = 5  # minimum selections per client
-        self.accuracy_eval_interval = 5  # evaluate accuracy every R rounds
         self.phase_threshold = 30  # switch from reliability to fairness focus
         # EMA Training Time Tracking
         self.ema_alpha = ema_alpha
@@ -702,6 +696,7 @@ save_dir="feature_visualizations_gpaf"
         if cid in self.client_assignments:
             cluster_id = self.client_assignments[cid]
             clusters[cluster_id].append(cid)
+      print(f'=== clusters of training {clusters} and number of clusters is {len(clusters)}')
         else:
             # Clients without assignment go to cluster 0 by default
             clusters[0].append(cid)
@@ -760,13 +755,16 @@ save_dir="feature_visualizations_gpaf"
       print(f"\n{'─'*80}")
       print(f"[Selection Distribution]")
       print(f"{'─'*80}")
-    
+      
       if not clusters:
         print("No clusters available for selection")
         return []
     
       total_clusters = len(clusters)
-      base_per_cluster = max(1, self.min_fit_clients // total_clusters)
+      #base_per_cluster = max(1, self.min_fit_clients // total_clusters)
+      base_per_cluster=3
+      #base_per_cluster = max(1, self.min_fit_clients // total_clusters)
+
       remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
     
       print(f"Total selection budget: {self.min_fit_clients} clients")
