@@ -133,6 +133,7 @@ class FederatedClient(fl.client.NumPyClient):
             start_time = time.time()
             # On ne le fait que pour la première ronde pour des raisons de performance.
             if round_number == 1 :
+              print(f'=== visualize =====')
               # Il prend le client_id et le DataLoader d'entraînement pour analyser la distribution locale.
               self.pixel_analyzer = PixelDistributionAnalyzer(
             client_id=self.client_id, 

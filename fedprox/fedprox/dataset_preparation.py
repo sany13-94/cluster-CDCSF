@@ -36,29 +36,18 @@ warnings.filterwarnings(
     message="The given NumPy array is not writable, and PyTorch does not support non-writable tensors.", 
     category=UserWarning
 )
-def build_transform():  
-    t = []
-    t.append(transforms.ToTensor())
-    #t.append(transforms.RandomCrop(config.DATA.IMG_SIZE, padding=4))
-    #t.append(transforms.Grayscale(num_output_channels=1))  # Keep single channel
-    t.append(transforms.RandomHorizontalFlip(p=0.5))
-    t.append(transforms.RandomRotation(degrees=45))
-    #t.append(transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.2))
-    t.append(transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))], p=0.5))
-    
-  
-    #t.append(transforms.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD))
-    t.append(transforms.Normalize([0.5], [0.5]))  # For grayscale data
-    return transforms.Compose(t)
-
-
-def buid_domain_transform():
+def build_augmentation_transform():  
+    """
+    Construit les transformations d'AUGMENTATION de données (Random Flip, Rotation, Blur). 
+    Ces transformations opèrent sur un torch.Tensor (CHW) mis à l'échelle [0, 1] ou normalisé.
+    Ces transformations sont stochastiques et utilisées SEULEMENT pour l'entraînement.
+    """
     t = []
     t.append(transforms.RandomHorizontalFlip(p=0.5))
     t.append(transforms.RandomRotation(degrees=45))
     t.append(transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))], p=0.5))
-    t.append(transforms.Normalize([0.5], [0.5]))  # For grayscale data
     return transforms.Compose(t)
+
 
 def compute_label_counts(dataset):
    
@@ -66,9 +55,16 @@ def compute_label_counts(dataset):
     label_counts = Counter(labels)  # Count occurrences of each label
     return label_counts
 
+# Fonctions utilitaires pour la Normalisation Finale
+def get_final_normalize_transform():
+    """Définit la transformation de NORMALISATION FINALE (Mean/Std)."""
+    # Statistiques de normalisation PathMNIST standard
+    MEAN = [0.7909, 0.6275, 0.7681]
+    STD = [0.1054, 0.1795, 0.0898]
+    return transforms.Normalize(mean=MEAN, std=STD) 
 
+# --- Définitions des classes (Mise à jour) ---
 
-#pathmnist dataset
 class SameModalityDomainShift:
     """Domain shift for same imaging modality across different clients."""
     def __init__(self, client_id: int, modality: str = "CT", seed: int = 42):
@@ -143,8 +139,7 @@ class SameModalityDomainShift:
 class DomainShiftedPathMNIST(torch.utils.data.Dataset):
     def __init__(self, base_ds, client_id, seed=42):
         """
-        base_ds: any torch Dataset returning (img, label)
-        client_id: integer 0–5
+        Applique le Décalage de Domaine sur un Tensor [0, 1] fourni par base_ds.
         """
         self.base = base_ds
         self.shift = SameModalityDomainShift(client_id, modality="CT", seed=seed)
@@ -153,133 +148,189 @@ class DomainShiftedPathMNIST(torch.utils.data.Dataset):
         return len(self.base)
 
     def __getitem__(self, idx):
+        # img est un Tensor [0, 1]
         img, label = self.base[idx]
+        
+        # Applique le décalage de domaine (Contraste/Bruit)
         img = self.shift.apply_transform(img)
         return img, label
 
 
 class LazyPathMNIST(Dataset):
-    
+    """
+    Charge les données brutes et applique SEULEMENT la mise à l'échelle ToTensor [0, 1].
+    Les augmentations et la normalisation sont appliquées par des wrappers.
+    """
     def __init__(self, split: str, transform=None):
+        # Initialisation du convertisseur ToTensor (mise à l'échelle [0, 1])
         self.to_tensor_converter = transforms.ToTensor()
 
         if split not in ['train', 'test', 'val']:
             raise ValueError("Split must be one of 'train', 'test', or 'val'.")
             
         self.split = split
-        self.transform = transform
+        # self.transform est ignoré car nous ne voulons ici que ToTensor.
         
-        # 1. Use the official medmnist loader to get the dataset object
-        # We pass transform=None here because we want to apply the tensor conversion 
-        # and custom transforms ourselves in __getitem__ (the lazy part).
+        # 1. Utiliser le chargeur officiel medmnist
         dataset_class = getattr(medmnist.dataset, 'PathMNIST')
         
-        # This automatically handles downloading the file if needed and loading the data
+        # Transform=None pour gérer la conversion en Tensor et la Normalisation finale nous-mêmes
         self.medmnist_ds = dataset_class(split=split, transform=None, download=True)
         
-        # 2. Extract the NumPy arrays directly from the loaded object
-        # The medmnist object (self.medmnist_ds) already contains only the 
-        # images and labels for the requested split.
+        # 2. Extraire les NumPy arrays
         self.imgs = self.medmnist_ds.imgs  # NumPy array (N, H, W, C)
         self.labels = self.medmnist_ds.labels.flatten() # NumPy array (N,)
 
     def __len__(self) -> int:
         """Returns the number of samples in the current split."""
-        # Use the length of the loaded NumPy array
         return len(self.imgs)
 
     def __getitem__(self, idx: int) :
         """
-        Retourne l'image brute (NumPy array HWC, dtype=uint8) et le label (int).
+        Pipeline de transformation: NumPy (HWC) -> ToTensor (CHW, [0,1]).
         """
-        img = self.imgs[idx].copy() # NumPy array (HWC)
+        # 1. Image brute (NumPy array HWC)
+        img = self.imgs[idx].copy() 
+        
+        # 2. Convertir en Tensor et mettre à l'échelle [0, 1] (Scaling)
+        img_tensor = self.to_tensor_converter(img)
+        
+        # 3. Augmentations sont appliquées par un wrapper
+        
         label = self.labels[idx]
-        # img: NumPy array (HWC) -> torch.Tensor (CHW, scaled 0-1)
-        if self.transform:
-
-          #img = self.to_tensor_converter(img)
-          img = self.transform(img)
-        
-        # Retourne l'image brute (NumPy array) et le label (int)
-        # Convert label to LongTensor
         label_tensor = torch.tensor(label, dtype=torch.long)
-        return img, label_tensor
-  
         
+        # Retourne le Tensor de pixel [0, 1] prêt pour le décalage de domaine
+        return img_tensor, label_tensor
+
+# --- NOUVELLE CLASSE D'EMBALLAGE pour l'Augmentation (Après le Domain Shift) ---
+class AugmentationWrapper(Dataset):
+    """
+    Applique les transformations d'augmentation (Random Flip, Rotation) après le décalage de domaine.
+    Utilisée seulement pour l'entraînement.
+    """
+    def __init__(self, base_ds: Dataset, augmentation_transform: transforms.Compose):
+        self.base = base_ds
+        self.augmentation = augmentation_transform
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        # Récupère l'image (Tensor [0, 1]) + Décalage de Domaine
+        img, label = self.base[idx]
+        
+        # APPLIQUE L'AUGMENTATION
+        img = self.augmentation(img)
+        
+        return img, label
+
+# --- NOUVELLE CLASSE D'EMBALLAGE pour la Normalisation Finale (En Dernier) ---
+class FinalNormalizeWrapper(Dataset):
+    """
+    Applique la normalisation après toutes les étapes (Scaling, Shift, Augmentation).
+    """
+    def __init__(self, base_ds: Dataset, normalize_transform: transforms.Normalize):
+        self.base = base_ds
+        self.normalize = normalize_transform
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, idx):
+        # Récupère l'image (Tensor [0, 1]) + Décalage de Domaine + Augmentation (si appliqué)
+        img, label = self.base[idx]
+        
+        # APPLIQUE LA NORMALISATION FINALE (Centrage/Réduction)
+        img = self.normalize(img)
+        
+        return img, label
+
+# --- Fonction principale corrigée ---
+
 def make_pathmnist_clients_final(
     k: int=20,  # Total number of clients (k-1 from train + 1 from test)
     d: int = 3,  # Number of distinct domain shifts for the k-1 clients
     batch_size: int = 32,
     val_ratio: float = 0.1,
     seed: int = 42
-) -> Tuple[List[DataLoader], List[DataLoader], DataLoader]:
+) -> Tuple[List[DataLoader], List[DataLoader]]:
    
     if k <= 1:
         raise ValueError("Total number of clients (k) must be greater than 1.")
     if d < 1:
         raise ValueError("Number of domain shifts (d) must be at least 1.")
 
-    # 1. Load the base sets
-    # NOTE: The ds_test client data will be an *un-shifted* domain.
-    ds_train = LazyPathMNIST(split='train', transform=build_transform())
-    ds_test  = LazyPathMNIST(split='test',  transform=build_transform())
+    # 1. Définir les transformations : Augmentation et Normalisation Finale
+    augmentation_transform = build_augmentation_transform()
+    normalize_transform = get_final_normalize_transform()
     
-    # 2. Split ds_train into k-1 partitions
+    # 2. Charger les jeux de données de base avec SEULEMENT le Scaling [0, 1]
+    ds_train = LazyPathMNIST(split='train')
+    ds_test  = LazyPathMNIST(split='test')
+    
+    # 3. Partitionnement des données d'entraînement (k-1 clients)
     num_train_clients_from_ds_train = k - 1
-    
     g = torch.Generator().manual_seed(seed)
     
-    # Calculate partition sizes for k-1 partitions
     base_size = len(ds_train) // num_train_clients_from_ds_train
     remainder = len(ds_train) % num_train_clients_from_ds_train
     partition_lengths = [base_size + 1] * remainder + [base_size] * (num_train_clients_from_ds_train - remainder)
     
     raw_train_partitions = random_split(ds_train, partition_lengths, generator=g)
 
-    # 3. Create Shifted Training and Validation Datasets (Clients 0 to k-2)
+    # 4. Création des DataLoaders d'entraînement et de validation
     train_loaders, val_loaders = [], []
-    domain_shifts = list(range(d)) # The shifts are indexed 0, 1, 2, ... d-1
+    domain_shifts = list(range(d)) 
 
     for client_id in range(num_train_clients_from_ds_train):
         partition_ds = raw_train_partitions[client_id]
         
-        # 3a. Carve local validation set from the partition
+        # 4a. Carve local validation set from the partition
         n_val = int(len(partition_ds) * val_ratio)
         n_trn = len(partition_ds) - n_val
         
         g_split = torch.Generator().manual_seed(seed + client_id)
         trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
         
-        # 3b. Determine the domain shift for this client (for grouping/server logic)
-        shift_offset = domain_shifts[client_id % d] 
+        # --- NOUVEAU PIPELINE : SHIFT -> AUGMENTATION (TRAIN ONLY) -> NORMALIZE ---
         
-        # 3c. Apply the domain shift. Use the UNIQUE client_id for unique randomization.
+        # 4b. 1. Appliquer le Décalage de Domaine (Shift)
         shifted_trn_ds = DomainShiftedPathMNIST(
             base_ds=trn_base, 
-            client_id=client_id, 
+            client_id=client_id, # Utilise l'ID client pour un shift unique
             seed=seed
         )
+        # Le décalage de domaine est appliqué aussi à la validation car il est déterministe par client
         shifted_val_ds = DomainShiftedPathMNIST(
             base_ds=val_base, 
-            client_id=client_id, 
+            client_id=client_id,
             seed=seed
         )
         
-        # 3d. Wrap into DataLoaders
+        # 4c. 2. Appliquer l'Augmentation (AugmentationWrapper) - SEULEMENT TRAIN
+        augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, augmentation_transform)
+        # La validation n'utilise PAS d'augmentation : on passe directement au normalize
+        
+        # 4d. 3. Appliquer la Normalisation Finale (FinalNormalizeWrapper)
+        final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
+        final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform) # Utilise shifted_val_ds (pas d'augmentation)
+        
+        # 4e. Wrap into DataLoaders
         train_loaders.append(
-            DataLoader(shifted_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+            DataLoader(final_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
         )
         val_loaders.append(
-            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+            DataLoader(final_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
         )
 
     # --------------------------------------------------------------------------
-    # 4. Final Client: The Original Test Set Domain (Client k-1)
+    # 5. Final Client: The Original Test Set Domain (Client k-1)
     # --------------------------------------------------------------------------
     
     final_client_id = k - 1
     
-    # 4a. Carve a small validation set from ds_test
+    # 5a. Carve a small validation set from ds_test
     n_val_test = int(len(ds_test) * val_ratio)
     n_trn_test = len(ds_test) - n_val_test
     
@@ -288,26 +339,34 @@ def make_pathmnist_clients_final(
         ds_test, [n_trn_test, n_val_test], generator=g_test_split
     )
 
-   
-    # Data for training (trn_test_base)
+    # 5b. Appliquer le UN-SHIFTED (client_id=0), l'Augmentation (Train only) et la Normalisation Finale
+    
+    # 1. Décalage de Domaine (Utilise client_id=0 pour désactiver SameModalityDomainShift)
     shifted_trn_test_ds = DomainShiftedPathMNIST(
         base_ds=trn_test_base, 
-        client_id=0, # Use client_id=0 to enforce UN-SHIFTED data
+        client_id=0, 
         seed=seed
     )
-    # Data for validation (val_test_base)
     shifted_val_test_ds = DomainShiftedPathMNIST(
         base_ds=val_test_base, 
-        client_id=0, # Use client_id=0 to enforce UN-SHIFTED data
+        client_id=0, 
         seed=seed
     )
     
-    # 4c. Wrap into DataLoaders and append to the lists
+    # 2. Appliquer l'Augmentation (SEULEMENT TRAIN)
+    augmented_trn_test_ds = AugmentationWrapper(shifted_trn_test_ds, augmentation_transform)
+    # La validation n'utilise PAS d'augmentation : on passe directement au normalize
+    
+    # 3. Appliquer la Normalisation Finale
+    final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
+    final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform) # Utilise shifted_val_test_ds
+    
+    # 5c. Wrap into DataLoaders and append to the lists
     train_loaders.append(
-        DataLoader(shifted_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        DataLoader(final_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
     )
     val_loaders.append(
-        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        DataLoader(final_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
     )
 
     return train_loaders, val_loaders
