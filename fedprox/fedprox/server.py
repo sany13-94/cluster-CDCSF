@@ -126,8 +126,7 @@ class GPAFStrategy(FedAvg):
       
         reliability_lambda = 0.05
         acc_drop_threshold  = 0.005
-        self.client_targets = defaultdict(lambda: initial_target_selections)
-        self.initial_target_selections = initial_target_selections
+       
 
         # NEW RELIABILITY ATTRIBUTE
         self.reliability_lambda = reliability_lambda
