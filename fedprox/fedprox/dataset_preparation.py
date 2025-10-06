@@ -26,7 +26,16 @@ def  normalize_tensor(x: torch.Tensor):
 import numpy as np
 from collections import Counter
 from torch.utils.data import Dataset, DataLoader, Subset
+import warnings # NOUVEAU: Pour la gestion des avertissements
 
+# --- Filtrage des avertissements ---
+# Cette ligne ignore l'avertissement bruyant de PyTorch/NumPy concernant les tableaux non inscriptibles.
+# La correction est faite ci-dessous avec .copy(), mais le filtre sert de filet de sécurité.
+warnings.filterwarnings(
+    "ignore", 
+    message="The given NumPy array is not writable, and PyTorch does not support non-writable tensors.", 
+    category=UserWarning
+)
 def build_transform():  
     t = []
     t.append(transforms.ToTensor())
@@ -183,8 +192,8 @@ class LazyPathMNIST(Dataset):
         """
         Retourne l'image brute (NumPy array HWC, dtype=uint8) et le label (int).
         """
-        img = self.imgs[idx]
-        label = self.labels[idx].item()
+        img = self.imgs[idx].copy() # NumPy array (HWC)
+        label = self.labels[idx]
         # img: NumPy array (HWC) -> torch.Tensor (CHW, scaled 0-1)
         if self.transform:
 
@@ -192,7 +201,9 @@ class LazyPathMNIST(Dataset):
           img = self.transform(img)
         
         # Retourne l'image brute (NumPy array) et le label (int)
-        return img, label
+        # Convert label to LongTensor
+        label_tensor = torch.tensor(label, dtype=torch.long)
+        return img, label_tensor
   
         
 def make_pathmnist_clients_final(
