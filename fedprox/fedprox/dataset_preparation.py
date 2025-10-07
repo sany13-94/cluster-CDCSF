@@ -64,6 +64,8 @@ def get_final_normalize_transform():
 class SameModalityDomainShift:
     def __init__(self, client_id: int, modality: str = "CT", seed: int = 42):
         self.client_id = client_id
+        # FIX: Generate and store characteristics
+        self.characteristics = self._generate_client_characteristics()
         
     def _generate_client_characteristics(self) -> Dict:
         equipment_profiles = {
@@ -87,26 +89,23 @@ class SameModalityDomainShift:
         profiles = list(equipment_profiles.values())
         base_profile = profiles[self.client_id % len(profiles)]
         
-        # REMOVE ALL RANDOMIZATION - use fixed values
+        # Use fixed values from the profile
         characteristics = {
             'noise_level': base_profile['noise_level'],
-            'contrast_scale': base_profile['contrast_range'][0],  # Use min value consistently
+            'contrast_scale': base_profile['contrast_scale'],  # Fixed: use correct key
             'brightness_shift': base_profile['brightness_shift'],
-            'resolution_factor': base_profile['resolution_factor']
         }
         
         return characteristics
-
-    
     
     def apply_transform(self, img: torch.Tensor) -> torch.Tensor:
         """Apply domain shift transformation."""
        
-        # 2. Contrast adjustment
         # If client_id is 0, return the original image without transformation
         if self.client_id == 0:
-          return img  # No changes applied
+            return img  # No changes applied
         
+        # 2. Contrast adjustment
         img = img * self.characteristics['contrast_scale']
         
         # 3. Brightness shift
