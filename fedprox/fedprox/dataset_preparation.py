@@ -62,55 +62,38 @@ def get_final_normalize_transform():
 # --- Définitions des classes (Mise à jour) ---
 
 class SameModalityDomainShift:
-    """Domain shift for same imaging modality across different clients."""
-    def __init__(self, client_id: int, modality: str = "CT", seed: int = 42):
-        self.client_id = client_id
-        self.modality = modality
-        
-        # Set random seed for reproducible client characteristics
-        np.random.seed(seed + client_id)
-        self.characteristics = self._generate_client_characteristics()
-        np.random.seed(None)
-        
     def _generate_client_characteristics(self) -> Dict:
         equipment_profiles = {
-        # original form
-           'high_end': {
-    'noise_level': 0.00,        # No noise
-    'contrast_range': (1.0, 1.0),  # No contrast change
-    'brightness_shift': 0.00,    # No brightness shift
-    'resolution_factor': 1.0     # No resolution change
-},
+            'high_end': {
+                'noise_level': 0.00,
+                'contrast_scale': 1.0,
+                'brightness_shift': 0.0,
+            },
             'mid_range': {
-        'noise_level': 0.08,        # Increased from 0.04
-        'contrast_range': (0.6, 1.4), # Wider range
-        'brightness_shift': 0.2,    # Increased from 0.1
-        'resolution_factor': 0.85
-    },
-    'older_model': {
-        'noise_level': 0.12,        # Increased from 0.06
-        'contrast_range': (0.5, 1.5), # Wider range
-        'brightness_shift': 0.3,    # Increased from 0.15
-        'resolution_factor': 0.7
-    }
-    
+                'noise_level': 0.15,        # Increased
+                'contrast_scale': 0.7,      # More contrast reduction
+                'brightness_shift': 0.3,    # Stronger shift
+            },
+            'older_model': {
+                'noise_level': 0.25,        # Much stronger noise
+                'contrast_scale': 0.5,      # Significant contrast reduction
+                'brightness_shift': 0.5,    # Strong brightness shift
+            }
         }
         
         profiles = list(equipment_profiles.values())
         base_profile = profiles[self.client_id % len(profiles)]
-        print(f'client id : {self.client_id} and {base_profile}')
-          
-        contrast_scale = np.random.uniform(*base_profile['contrast_range'])
-        brightness_shift = base_profile['brightness_shift'] * np.random.uniform(0.8, 1.2) * contrast_scale
-
+        
+        # REMOVE ALL RANDOMIZATION - use fixed values
         characteristics = {
-    'noise_level': base_profile['noise_level'] * np.random.uniform(0.9, 1.1) * contrast_scale,
-    'contrast_scale': contrast_scale,
-    'brightness_shift': base_profile['brightness_shift'] * np.random.uniform(0.8, 1.2) * contrast_scale,
-    'resolution_factor': base_profile['resolution_factor']
-}
-
+            'noise_level': base_profile['noise_level'],
+            'contrast_scale': base_profile['contrast_range'][0],  # Use min value consistently
+            'brightness_shift': base_profile['brightness_shift'],
+            'resolution_factor': base_profile['resolution_factor']
+        }
+        
         return characteristics
+
     
     
     def apply_transform(self, img: torch.Tensor) -> torch.Tensor:
@@ -244,127 +227,111 @@ class FinalNormalizeWrapper(Dataset):
 
 # --- Fonction principale corrigée ---
 
-def make_pathmnist_clients_final(
-    k: int=20,  # Total number of clients (k-1 from train + 1 from test)
-    d: int = 3,  # Number of distinct domain shifts for the k-1 clients
+def make_pathmnist_clients_with_domains(
+    k: int = 15,
+    d: int = 3,
     batch_size: int = 32,
     val_ratio: float = 0.1,
     seed: int = 42
-) -> Tuple[List[DataLoader], List[DataLoader]]:
-   
-    if k <= 1:
-        raise ValueError("Total number of clients (k) must be greater than 1.")
-    if d < 1:
-        raise ValueError("Number of domain shifts (d) must be at least 1.")
-
-    # 1. Définir les transformations : Augmentation et Normalisation Finale
+):
+    """
+    Create k clients grouped into d domains
+    k-1 clients from train split, 1 client from test split (domain d+1)
+    """
+    
     augmentation_transform = build_augmentation_transform()
     normalize_transform = get_final_normalize_transform()
     
-    # 2. Charger les jeux de données de base avec SEULEMENT le Scaling [0, 1]
     ds_train = LazyPathMNIST(split='train')
-    ds_test  = LazyPathMNIST(split='test')
+    ds_test = LazyPathMNIST(split='test')
     
-    # 3. Partitionnement des données d'entraînement (k-1 clients)
-    num_train_clients_from_ds_train = k - 1
+    num_train_clients = k - 1
+    
+    # CRITICAL: Assign clients to domains EXPLICITLY
+    clients_per_domain = num_train_clients // d
+    domain_assignment = []
+    
+    for domain_id in range(d):
+        for _ in range(clients_per_domain):
+            domain_assignment.append(domain_id)
+    
+    # Handle remaining clients
+    for i in range(num_train_clients - len(domain_assignment)):
+        domain_assignment.append(i % d)
+    
+    print(f"\n[Domain Assignment]")
+    for domain_id in range(d):
+        clients_in_domain = [i for i, d_id in enumerate(domain_assignment) if d_id == domain_id]
+        print(f"  Domain {domain_id}: Clients {clients_in_domain}")
+    
+    # Partition train data
     g = torch.Generator().manual_seed(seed)
-    
-    base_size = len(ds_train) // num_train_clients_from_ds_train
-    remainder = len(ds_train) % num_train_clients_from_ds_train
-    partition_lengths = [base_size + 1] * remainder + [base_size] * (num_train_clients_from_ds_train - remainder)
-    
+    base_size = len(ds_train) // num_train_clients
+    remainder = len(ds_train) % num_train_clients
+    partition_lengths = [base_size + 1] * remainder + [base_size] * (num_train_clients - remainder)
     raw_train_partitions = random_split(ds_train, partition_lengths, generator=g)
-
-    # 4. Création des DataLoaders d'entraînement et de validation
+    
     train_loaders, val_loaders = [], []
-    domain_shifts = list(range(d)) 
-
-    for client_id in range(num_train_clients_from_ds_train):
+    
+    for client_id in range(num_train_clients):
         partition_ds = raw_train_partitions[client_id]
         
-        # 4a. Carve local validation set from the partition
+        # Split train/val
         n_val = int(len(partition_ds) * val_ratio)
         n_trn = len(partition_ds) - n_val
-        
         g_split = torch.Generator().manual_seed(seed + client_id)
         trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
         
-        # --- NOUVEAU PIPELINE : SHIFT -> AUGMENTATION (TRAIN ONLY) -> NORMALIZE ---
+        # USE DOMAIN ID instead of client_id for domain shift
+        domain_id = domain_assignment[client_id]
         
-        # 4b. 1. Appliquer le Décalage de Domaine (Shift)
+        # Apply domain shift based on domain_id (NOT client_id)
         shifted_trn_ds = DomainShiftedPathMNIST(
-            base_ds=trn_base, 
-            client_id=client_id, # Utilise l'ID client pour un shift unique
-            seed=seed
+            base_ds=trn_base,
+            client_id=domain_id,  # ← FIXED: Use domain_id
+            seed=seed  # Same seed ensures same transformation for same domain
         )
-        # Le décalage de domaine est appliqué aussi à la validation car il est déterministe par client
         shifted_val_ds = DomainShiftedPathMNIST(
-            base_ds=val_base, 
-            client_id=client_id,
+            base_ds=val_base,
+            client_id=domain_id,  # ← FIXED: Use domain_id
             seed=seed
         )
         
-        # 4c. 2. Appliquer l'Augmentation (AugmentationWrapper) - SEULEMENT TRAIN
+        # Apply augmentation (train only)
         augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, augmentation_transform)
-        # La validation n'utilise PAS d'augmentation : on passe directement au normalize
         
-        # 4d. 3. Appliquer la Normalisation Finale (FinalNormalizeWrapper)
-        #final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
-        #final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform) # Utilise shifted_val_ds (pas d'augmentation)
+        # Apply normalization
+        final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
+        final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform)
         
-        # 4e. Wrap into DataLoaders
         train_loaders.append(
-            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+            DataLoader(final_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
         )
         val_loaders.append(
-            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+            DataLoader(final_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
         )
-
-    # --------------------------------------------------------------------------
-    # 5. Final Client: The Original Test Set Domain (Client k-1)
-    # --------------------------------------------------------------------------
     
-    final_client_id = k - 1
-    
-    # 5a. Carve a small validation set from ds_test
+    # Test domain client (k-th client, domain d)
     n_val_test = int(len(ds_test) * val_ratio)
     n_trn_test = len(ds_test) - n_val_test
+    g_test_split = torch.Generator().manual_seed(seed + k - 1)
+    trn_test_base, val_test_base = random_split(ds_test, [n_trn_test, n_val_test], generator=g_test_split)
     
-    g_test_split = torch.Generator().manual_seed(seed + final_client_id)
-    trn_test_base, val_test_base = random_split(
-        ds_test, [n_trn_test, n_val_test], generator=g_test_split
-    )
-
-    # 5b. Appliquer le UN-SHIFTED (client_id=0), l'Augmentation (Train only) et la Normalisation Finale
+    # Test domain uses client_id=0 (unshifted) - this becomes domain 3
+    shifted_trn_test_ds = DomainShiftedPathMNIST(base_ds=trn_test_base, client_id=0, seed=seed)
+    shifted_val_test_ds = DomainShiftedPathMNIST(base_ds=val_test_base, client_id=0, seed=seed)
     
-    # 1. Décalage de Domaine (Utilise client_id=0 pour désactiver SameModalityDomainShift)
-    shifted_trn_test_ds = DomainShiftedPathMNIST(
-        base_ds=trn_test_base, 
-        client_id=0, 
-        seed=seed
-    )
-    shifted_val_test_ds = DomainShiftedPathMNIST(
-        base_ds=val_test_base, 
-        client_id=0, 
-        seed=seed
-    )
-    
-    # 2. Appliquer l'Augmentation (SEULEMENT TRAIN)
     augmented_trn_test_ds = AugmentationWrapper(shifted_trn_test_ds, augmentation_transform)
-    # La validation n'utilise PAS d'augmentation : on passe directement au normalize
+    final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
+    final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform)
     
-    # 3. Appliquer la Normalisation Finale
-    #final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
-    #final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform) # Utilise shifted_val_test_ds
-    
-    # 5c. Wrap into DataLoaders and append to the lists
     train_loaders.append(
-        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        DataLoader(final_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
     )
     val_loaders.append(
-        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        DataLoader(final_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
     )
-
+    
     return train_loaders, val_loaders
 
 def create_domain_shifted_loaders(
