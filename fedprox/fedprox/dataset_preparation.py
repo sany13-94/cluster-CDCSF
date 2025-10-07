@@ -309,15 +309,15 @@ def make_pathmnist_clients_final(
         # La validation n'utilise PAS d'augmentation : on passe directement au normalize
         
         # 4d. 3. Appliquer la Normalisation Finale (FinalNormalizeWrapper)
-        final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
-        final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform) # Utilise shifted_val_ds (pas d'augmentation)
+        #final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
+        #final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform) # Utilise shifted_val_ds (pas d'augmentation)
         
         # 4e. Wrap into DataLoaders
         train_loaders.append(
-            DataLoader(final_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
         )
         val_loaders.append(
-            DataLoader(final_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
         )
 
     # --------------------------------------------------------------------------
@@ -354,15 +354,15 @@ def make_pathmnist_clients_final(
     # La validation n'utilise PAS d'augmentation : on passe directement au normalize
     
     # 3. Appliquer la Normalisation Finale
-    final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
-    final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform) # Utilise shifted_val_test_ds
+    #final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
+    #final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform) # Utilise shifted_val_test_ds
     
     # 5c. Wrap into DataLoaders and append to the lists
     train_loaders.append(
-        DataLoader(final_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
     )
     val_loaders.append(
-        DataLoader(final_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
     )
 
     return train_loaders, val_loaders
