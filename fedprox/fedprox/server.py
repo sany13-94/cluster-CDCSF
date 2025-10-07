@@ -361,15 +361,7 @@ save_dir="feature_visualizations_gpaf"
   
 
     def compute_reliability_scores(self, client_ids: List[str]) -> Dict[str, float]:
-        """
-        Compute reliability scores using the rational formula
-        A_s[c] = T_max / (T_c + β * T_max)
         
-        Where:
-        - T_max: Average of all clients' EMA training times (Equation 5)
-        - T_c: Individual client's EMA training time (Equation 4)
-        - β: Penalty strength parameter
-        """
         reliability_scores = {}
         
         # Calculate T_max - Equation (5): Average of EMA values
@@ -409,11 +401,7 @@ save_dir="feature_visualizations_gpaf"
     
     
     def compute_fairness_scores(self, client_ids: List[str]) -> Dict[str, float]:
-        """
-        Compute fairness scores using self-regulating mechanism
-        f_s[c] = 1 / (1 + R_c)
-        
-        """
+       
         fairness_scores = {}
         N = len(client_ids)
         T = self.total_rounds_completed
@@ -445,12 +433,7 @@ save_dir="feature_visualizations_gpaf"
         client_ids: List[str], 
         server_round: int
     ) -> Dict[str, float]:
-        """
-        Compute global selection scores
-        S_c = α₁ * A_s[c] + α₂ * f_s[c]
         
-        With adaptive weights based on training phase
-        """
         # Compute component scores
         reliability_scores = self.compute_reliability_scores(client_ids)
         fairness_scores = self.compute_fairness_scores(client_ids)
@@ -489,12 +472,7 @@ save_dir="feature_visualizations_gpaf"
     
     
     def _adapt_weights(self, server_round: int) -> Tuple[float, float]:
-        """
-        Adapt α₁ and α₂ weights based on training progress
         
-        Early training: Emphasize reliability (fast convergence)
-        Late training: Emphasize fairness (balanced participation)
-        """
         print(f'ss {server_round} and ee {self.total_rounds}')
         progress = server_round / self.total_rounds
         
@@ -517,17 +495,7 @@ save_dir="feature_visualizations_gpaf"
         num_clients_to_select: int,
         server_round: int
     ) -> List[str]:
-        """
-        Select top-k clients from a cluster based on global scores
-        
-        Args:
-            cluster_clients: List of client IDs in the cluster
-            num_clients_to_select: Number of clients to select (k)
-            server_round: Current round number
-        
-        Returns:
-            List of selected client IDs
-        """
+       
         if not cluster_clients:
             return []
         
@@ -567,11 +535,7 @@ save_dir="feature_visualizations_gpaf"
     parameters: Parameters, 
     client_manager: ClientManager
 ) -> List[Tuple[ClientProxy, FitIns]]:
-      """
-      Two-stage client selection:
-      - Stage 1 (rounds 1-warmup): All clients in unified pool
-      - Stage 2 (rounds warmup+): Domain-aware cluster selection
-      """
+     
     
       print(f"\n{'='*80}")
       print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION")

@@ -52,6 +52,38 @@ backend_config = {"client_resources": {"num_cpus":1 , "num_gpus": 0.0}}
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
 # partition dataset and get dataloaders
 
+def visualize_same_image_across_clients(trainloaders, image_idx=42, num_clients_to_show=6, save_path="visual_same_image.png"):
+    """Visualize the same image index across different clients to confirm domain shifts."""
+    import matplotlib.pyplot as plt
+    import torch
+
+    fig, axes = plt.subplots(1, num_clients_to_show, figsize=(4 * num_clients_to_show, 4))
+    axes = axes.flatten()
+
+    for i in range(num_clients_to_show):
+        client_dataset = trainloaders[i].dataset
+        # Ensure we don’t exceed dataset length
+        idx = min(image_idx, len(client_dataset) - 1)
+        image, label = client_dataset[idx]
+
+        # Move channels to last dimension
+        if isinstance(image, torch.Tensor):
+            img_np = image.permute(1, 2, 0).cpu().numpy()
+        else:
+            img_np = np.array(image)
+
+        # Clamp and normalize for display
+        img_np = np.clip(img_np, 0, 1)
+
+        axes[i].imshow(img_np)
+        axes[i].set_title(f"Client {i} | Label: {label}")
+        axes[i].axis("off")
+
+    plt.suptitle(f"Same Image Index ({image_idx}) Across Clients", fontsize=16)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved visualization: {save_path}")
 
 
 def visualize_intensity_distributions(trainloaders: List[DataLoader], num_clients: int):
@@ -210,6 +242,13 @@ def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
     trainloaders, valloaders=data_load(cfg)
+    print("🔍 Visualizing same image index across clients to inspect domain shifts...")
+    visualize_same_image_across_clients(
+    trainloaders=trainloaders,
+    image_idx=42,            # you can change this index to test others
+    num_clients_to_show=min(cfg.num_clients, 6),
+    save_path="visual_same_image.png"
+)
     # Print data distribution before visualization
    
         
