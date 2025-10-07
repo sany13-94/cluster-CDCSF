@@ -62,6 +62,9 @@ def get_final_normalize_transform():
 # --- Définitions des classes (Mise à jour) ---
 
 class SameModalityDomainShift:
+    def __init__(self, client_id: int, modality: str = "CT", seed: int = 42):
+        self.client_id = client_id
+        
     def _generate_client_characteristics(self) -> Dict:
         equipment_profiles = {
             'high_end': {
