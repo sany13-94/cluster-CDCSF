@@ -303,14 +303,14 @@ def make_pathmnist_clients_with_domains(
         augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, augmentation_transform)
         
         # Apply normalization
-        final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
-        final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform)
+        #final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
+        #final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform)
         
         train_loaders.append(
-            DataLoader(final_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
         )
         val_loaders.append(
-            DataLoader(final_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
         )
     
     # Test domain client (k-th client, domain d)
@@ -324,14 +324,14 @@ def make_pathmnist_clients_with_domains(
     shifted_val_test_ds = DomainShiftedPathMNIST(base_ds=val_test_base, client_id=0, seed=seed)
     
     augmented_trn_test_ds = AugmentationWrapper(shifted_trn_test_ds, augmentation_transform)
-    final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
-    final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform)
+    #final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
+    #final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform)
     
     train_loaders.append(
-        DataLoader(final_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
     )
     val_loaders.append(
-        DataLoader(final_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
     )
     
     return train_loaders, val_loaders
