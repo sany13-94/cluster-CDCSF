@@ -48,135 +48,151 @@ def build_augmentation_transform():
 
 
 # --- Définitions des classes (Mise à jour) ---
-
 class SameModalityDomainShift:
-    def __init__(self, client_id: int, modality: str = "CT", seed: int = 42):
-        self.client_id = client_id
-        # FIX: Generate and store characteristics
-        self.characteristics = self._generate_client_characteristics()
+    def __init__(self, domain_id: int, modality: str = "CT", seed: int = 42):
+        """
+        Initialize domain shift based on domain_id (NOT client_id).
         
-    def _generate_client_characteristics(self) -> Dict:
+        Args:
+            domain_id: Domain identifier (0=high-end, 1=mid-range, 2=older-model)
+            modality: Type of medical imaging (not used in current implementation)
+            seed: Random seed (for potential future stochastic operations)
+        """
+        self.domain_id = domain_id
+        self.seed = seed
+        self.characteristics = self._generate_domain_characteristics()
+        
+    def _generate_domain_characteristics(self) -> Dict:
+        """
+        Generate characteristics based on domain_id.
+        Each domain represents different equipment quality.
+        """
         equipment_profiles = {
-            'high_end': {
+            0: {  # High-End Equipment
+                'name': 'high_end',
                 'noise_level': 0.00,
                 'contrast_scale': 1.0,
                 'brightness_shift': 0.0,
             },
-            'mid_range': {
-                'noise_level': 0.15,        # Increased
-                'contrast_scale': 0.7,      # More contrast reduction
-                'brightness_shift': 0.3,    # Stronger shift
+            1: {  # Mid-Range Equipment
+                'name': 'mid_range',
+                'noise_level': 0.15,
+                'contrast_scale': 0.7,
+                'brightness_shift': 0.3,
             },
-            'older_model': {
-                'noise_level': 0.25,        # Much stronger noise
-                'contrast_scale': 0.5,      # Significant contrast reduction
-                'brightness_shift': 0.5,    # Strong brightness shift
+            2: {  # Older Model Equipment
+                'name': 'older_model',
+                'noise_level': 0.25,
+                'contrast_scale': 0.5,
+                'brightness_shift': 0.5,
             }
         }
         
-        profiles = list(equipment_profiles.values())
-        base_profile = profiles[self.client_id % len(profiles)]
+        # Get profile for this domain (with fallback to high-end)
+        profile = equipment_profiles.get(self.domain_id, equipment_profiles[0])
         
-        # Use fixed values from the profile
         characteristics = {
-            'noise_level': base_profile['noise_level'],
-            'contrast_scale': base_profile['contrast_scale'],  # Fixed: use correct key
-            'brightness_shift': base_profile['brightness_shift'],
+            'name': profile['name'],
+            'noise_level': profile['noise_level'],
+            'contrast_scale': profile['contrast_scale'],
+            'brightness_shift': profile['brightness_shift'],
         }
         
         return characteristics
     
     def apply_transform(self, img: torch.Tensor) -> torch.Tensor:
-        """Apply domain shift transformation."""
-       
-        # If client_id is 0, return the original image without transformation
-        if self.client_id == 0:
-            return img  # No changes applied
+        """
+        Apply domain shift transformation to image.
         
-        # 2. Contrast adjustment
+        Args:
+            img: Input image tensor in range [0, 1]
+            
+        Returns:
+            Transformed image tensor
+        """
+        # Domain 0 (high-end) remains unchanged
+        if self.domain_id == 0:
+            return img
+        
+        # Apply transformations for other domains
+        # 1. Contrast adjustment
         img = img * self.characteristics['contrast_scale']
         
-        # 3. Brightness shift
+        # 2. Brightness shift
         img = img + self.characteristics['brightness_shift']
         
-        # 4. Add noise
-        noise = torch.randn_like(img) * self.characteristics['noise_level']
-        img = img + noise
+        # 3. Add Gaussian noise
+        if self.characteristics['noise_level'] > 0:
+            noise = torch.randn_like(img) * self.characteristics['noise_level']
+            img = img + noise
         
         return img
 
-class DomainShiftedPathMNIST(torch.utils.data.Dataset):
-    def __init__(self, base_ds, client_id, seed=42):
+
+class DomainShiftedPathMNIST(Dataset):
+    def __init__(self, base_ds: Dataset, domain_id: int, seed: int = 42):
         """
-        Applique le Décalage de Domaine sur un Tensor [0, 1] fourni par base_ds.
+        Apply domain shift to a base dataset.
+        
+        Args:
+            base_ds: Base dataset returning images in [0, 1] range
+            domain_id: Domain identifier for shift characteristics
+            seed: Random seed
         """
         self.base = base_ds
-        self.shift = SameModalityDomainShift(client_id, modality="CT", seed=seed)
+        self.domain_id = domain_id
+        self.shift = SameModalityDomainShift(domain_id=domain_id, seed=seed)
 
     def __len__(self):
         return len(self.base)
 
     def __getitem__(self, idx):
-        # img est un Tensor [0, 1]
         img, label = self.base[idx]
-        
-        # Applique le décalage de domaine (Contraste/Bruit)
         img = self.shift.apply_transform(img)
         return img, label
 
 
 class LazyPathMNIST(Dataset):
     """
-    Charge les données brutes et applique SEULEMENT la mise à l'échelle ToTensor [0, 1].
-    Les augmentations et la normalisation sont appliquées par des wrappers.
+    Load raw PathMNIST data and apply ONLY ToTensor scaling to [0, 1].
+    Augmentations and domain shifts are applied by wrappers.
     """
     def __init__(self, split: str, transform=None):
-        # Initialisation du convertisseur ToTensor (mise à l'échelle [0, 1])
+        import medmnist
+        
         self.to_tensor_converter = transforms.ToTensor()
 
         if split not in ['train', 'test', 'val']:
             raise ValueError("Split must be one of 'train', 'test', or 'val'.")
             
         self.split = split
-        # self.transform est ignoré car nous ne voulons ici que ToTensor.
         
-        # 1. Utiliser le chargeur officiel medmnist
+        # Load official medmnist dataset
         dataset_class = getattr(medmnist.dataset, 'PathMNIST')
-        
-        # Transform=None pour gérer la conversion en Tensor et la Normalisation finale nous-mêmes
         self.medmnist_ds = dataset_class(split=split, transform=None, download=True)
         
-        # 2. Extraire les NumPy arrays
-        self.imgs = self.medmnist_ds.imgs  # NumPy array (N, H, W, C)
-        self.labels = self.medmnist_ds.labels.flatten() # NumPy array (N,)
+        # Extract NumPy arrays
+        self.imgs = self.medmnist_ds.imgs  # (N, H, W, C)
+        self.labels = self.medmnist_ds.labels.flatten()  # (N,)
 
     def __len__(self) -> int:
-        """Returns the number of samples in the current split."""
         return len(self.imgs)
 
-    def __getitem__(self, idx: int) :
-        """
-        Pipeline de transformation: NumPy (HWC) -> ToTensor (CHW, [0,1]).
-        """
-        # 1. Image brute (NumPy array HWC)
-        img = self.imgs[idx].copy() 
-        
-        # 2. Convertir en Tensor et mettre à l'échelle [0, 1] (Scaling)
+    def __getitem__(self, idx: int):
+        """Convert NumPy (HWC) -> Tensor (CHW, [0,1])"""
+        img = self.imgs[idx].copy()
         img_tensor = self.to_tensor_converter(img)
-        
-        # 3. Augmentations sont appliquées par un wrapper
         
         label = self.labels[idx]
         label_tensor = torch.tensor(label, dtype=torch.long)
         
-        # Retourne le Tensor de pixel [0, 1] prêt pour le décalage de domaine
         return img_tensor, label_tensor
 
-# --- NOUVELLE CLASSE D'EMBALLAGE pour l'Augmentation (Après le Domain Shift) ---
+
 class AugmentationWrapper(Dataset):
     """
-    Applique les transformations d'augmentation (Random Flip, Rotation) après le décalage de domaine.
-    Utilisée seulement pour l'entraînement.
+    Apply augmentation transformations after domain shift.
+    Used only for training data.
     """
     def __init__(self, base_ds: Dataset, augmentation_transform: transforms.Compose):
         self.base = base_ds
@@ -186,27 +202,35 @@ class AugmentationWrapper(Dataset):
         return len(self.base)
 
     def __getitem__(self, idx):
-        # Récupère l'image (Tensor [0, 1]) + Décalage de Domaine
         img, label = self.base[idx]
-        
-        # APPLIQUE L'AUGMENTATION
         img = self.augmentation(img)
-        
         return img, label
 
-
-# --- Fonction principale corrigée ---
 
 def make_pathmnist_clients_with_domains(
     k: int = 15,
     d: int = 3,
     batch_size: int = 32,
     val_ratio: float = 0.1,
-    seed: int = 42
+    seed: int = 42,
+    save_samples: bool = True
 ):
     """
-    Create k clients grouped into d domains
-    k-1 clients from train split, 1 client from test split (domain d+1)
+    Create k clients grouped into d domains.
+    - k-1 clients from train split, distributed across d domains
+    - 1 client from test split (becomes test domain, unshifted)
+    
+    Args:
+        k: Total number of clients
+        d: Number of training domains
+        batch_size: Batch size for data loaders
+        val_ratio: Validation split ratio
+        seed: Random seed for reproducibility
+        save_samples: Whether to save sample images per domain
+    
+    Returns:
+        train_loaders: List of k training DataLoaders
+        val_loaders: List of k validation DataLoaders
     """
     
     augmentation_transform = build_augmentation_transform()
@@ -216,7 +240,7 @@ def make_pathmnist_clients_with_domains(
     
     num_train_clients = k - 1
     
-    # CRITICAL: Assign clients to domains EXPLICITLY
+    # Assign clients to domains explicitly
     clients_per_domain = num_train_clients // d
     domain_assignment = []
     
@@ -224,16 +248,19 @@ def make_pathmnist_clients_with_domains(
         for _ in range(clients_per_domain):
             domain_assignment.append(domain_id)
     
-    # Handle remaining clients
+    # Handle remaining clients (distribute evenly)
     for i in range(num_train_clients - len(domain_assignment)):
         domain_assignment.append(i % d)
     
     print(f"\n[Domain Assignment]")
+    print(f"  Total clients: {k} ({num_train_clients} training + 1 test)")
+    print(f"  Number of domains: {d}")
     for domain_id in range(d):
         clients_in_domain = [i for i, d_id in enumerate(domain_assignment) if d_id == domain_id]
         print(f"  Domain {domain_id}: Clients {clients_in_domain}")
+    print(f"  Test Domain (unshifted): Client {k-1}")
     
-    # Partition train data
+    # Partition train data across clients
     g = torch.Generator().manual_seed(seed)
     base_size = len(ds_train) // num_train_clients
     remainder = len(ds_train) % num_train_clients
@@ -242,51 +269,32 @@ def make_pathmnist_clients_with_domains(
     
     train_loaders, val_loaders = [], []
     
+    # Create loaders for training clients
     for client_id in range(num_train_clients):
         partition_ds = raw_train_partitions[client_id]
         
-        # Split train/val
+        # Split into train/val
         n_val = int(len(partition_ds) * val_ratio)
         n_trn = len(partition_ds) - n_val
         g_split = torch.Generator().manual_seed(seed + client_id)
         trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
         
-
-        #sauvegarder original images from dataset
-
-        
-        # Extraire un petit batch
-        loader = DataLoader(partition_ds, batch_size=8, shuffle=True)
-        images, labels = next(iter(loader))
-        
-        
-
-        # USE DOMAIN ID instead of client_id for domain shift
+        # Get domain_id for this client
         domain_id = domain_assignment[client_id]
-
-        # Créer une grille d’images
-        save_path = os.path.join(f"domainclient-{domain_id}.png")
-
-        img_grid = make_grid(images, nrow=4, normalize=True)
-        plt.figure(figsize=(6, 6))
-        plt.imshow(img_grid.permute(1, 2, 0))
-        plt.title(f"Originals - Domain {domain_id} - Client {client_id}")
-        plt.axis("off")
-        plt.tight_layout()
-
-        # Sauvegarder dans un fichier PNG
-        plt.savefig(save_path)
-        plt.close()
         
-        # Apply domain shift based on domain_id (NOT client_id)
+        # Save sample images (one per domain, not per client)
+        if save_samples and client_id == domain_assignment.index(domain_id):
+            save_domain_samples(partition_ds, domain_id, client_id)
+        
+        # Apply domain shift based on domain_id
         shifted_trn_ds = DomainShiftedPathMNIST(
             base_ds=trn_base,
-            client_id=domain_id,  # ← FIXED: Use domain_id
-            seed=seed  # Same seed ensures same transformation for same domain
+            domain_id=domain_id,  # ← Consistent: use domain_id
+            seed=seed
         )
         shifted_val_ds = DomainShiftedPathMNIST(
             base_ds=val_base,
-            client_id=domain_id,  # ← FIXED: Use domain_id
+            domain_id=domain_id,  # ← Consistent: use domain_id
             seed=seed
         )
         
@@ -294,32 +302,56 @@ def make_pathmnist_clients_with_domains(
         augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, augmentation_transform)
         
         train_loaders.append(
-            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=True, 
+                      pin_memory=True, num_workers=4)
         )
         val_loaders.append(
-            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, 
+                      pin_memory=True, num_workers=4)
         )
     
-    # Test domain client (k-th client, domain d)
+    # Create test domain client (unshifted, domain_id=0)
     n_val_test = int(len(ds_test) * val_ratio)
     n_trn_test = len(ds_test) - n_val_test
     g_test_split = torch.Generator().manual_seed(seed + k - 1)
-    trn_test_base, val_test_base = random_split(ds_test, [n_trn_test, n_val_test], generator=g_test_split)
+    trn_test_base, val_test_base = random_split(ds_test, [n_trn_test, n_val_test], 
+                                                 generator=g_test_split)
     
-    # Test domain uses client_id=0 (unshifted) - this becomes domain 3
-    shifted_trn_test_ds = DomainShiftedPathMNIST(base_ds=trn_test_base, client_id=0, seed=seed)
-    shifted_val_test_ds = DomainShiftedPathMNIST(base_ds=val_test_base, client_id=0, seed=seed)
+    # Test domain is unshifted (domain_id=0)
+    shifted_trn_test_ds = DomainShiftedPathMNIST(base_ds=trn_test_base, domain_id=0, seed=seed)
+    shifted_val_test_ds = DomainShiftedPathMNIST(base_ds=val_test_base, domain_id=0, seed=seed)
     
     augmented_trn_test_ds = AugmentationWrapper(shifted_trn_test_ds, augmentation_transform)
    
     train_loaders.append(
-        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
+        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, 
+                  pin_memory=True, num_workers=4)
     )
     val_loaders.append(
-        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, pin_memory=True, num_workers=4)
+        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, 
+                  pin_memory=True, num_workers=4)
     )
     
     return train_loaders, val_loaders
+
+
+def save_domain_samples(partition_ds, domain_id, client_id):
+    """Save sample images for visualization (one per domain)."""
+    loader = DataLoader(partition_ds, batch_size=8, shuffle=True)
+    images, labels = next(iter(loader))
+    
+    save_path = f"domain_{domain_id}_client_{client_id}_original.png"
+    
+    img_grid = make_grid(images, nrow=4, normalize=True)
+    plt.figure(figsize=(6, 6))
+    plt.imshow(img_grid.permute(1, 2, 0))
+    plt.title(f"Original Images - Domain {domain_id} - Client {client_id}")
+    plt.axis("off")
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
+    
+    print(f"  Saved sample images to {save_path}")
 
 def create_domain_shifted_loaders(
    root_path,
