@@ -9,7 +9,7 @@ from torch.utils.data import ConcatDataset, Dataset, Subset, random_split
 from torchvision.datasets import MNIST
 import os
 from torchvision.utils import make_grid
-
+import matplotlib.pyplot as plt
 import torch.utils.data as data
 from torch.utils.data import random_split, DataLoader, ConcatDataset
 import torch
