@@ -45,20 +45,6 @@ def build_augmentation_transform():
     return transforms.Compose(t)
 
 
-def compute_label_counts(dataset):
-   
-    labels = [label for _, label in dataset]  # Extract labels from the dataset
-    label_counts = Counter(labels)  # Count occurrences of each label
-    return label_counts
-
-# Fonctions utilitaires pour la Normalisation Finale
-def get_final_normalize_transform():
-    """Définit la transformation de NORMALISATION FINALE (Mean/Std)."""
-    # Statistiques de normalisation PathMNIST standard
-    MEAN = [0.7909, 0.6275, 0.7681]
-    STD = [0.1054, 0.1795, 0.0898]
-    return transforms.Normalize(mean=MEAN, std=STD) 
-
 # --- Définitions des classes (Mise à jour) ---
 
 class SameModalityDomainShift:
@@ -206,26 +192,6 @@ class AugmentationWrapper(Dataset):
         
         return img, label
 
-# --- NOUVELLE CLASSE D'EMBALLAGE pour la Normalisation Finale (En Dernier) ---
-class FinalNormalizeWrapper(Dataset):
-    """
-    Applique la normalisation après toutes les étapes (Scaling, Shift, Augmentation).
-    """
-    def __init__(self, base_ds: Dataset, normalize_transform: transforms.Normalize):
-        self.base = base_ds
-        self.normalize = normalize_transform
-
-    def __len__(self):
-        return len(self.base)
-
-    def __getitem__(self, idx):
-        # Récupère l'image (Tensor [0, 1]) + Décalage de Domaine + Augmentation (si appliqué)
-        img, label = self.base[idx]
-        
-        # APPLIQUE LA NORMALISATION FINALE (Centrage/Réduction)
-        img = self.normalize(img)
-        
-        return img, label
 
 # --- Fonction principale corrigée ---
 
@@ -302,10 +268,6 @@ def make_pathmnist_clients_with_domains(
         # Apply augmentation (train only)
         augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, augmentation_transform)
         
-        # Apply normalization
-        #final_trn_ds = FinalNormalizeWrapper(augmented_trn_ds, normalize_transform)
-        #final_val_ds = FinalNormalizeWrapper(shifted_val_ds, normalize_transform)
-        
         train_loaders.append(
             DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
         )
@@ -324,9 +286,7 @@ def make_pathmnist_clients_with_domains(
     shifted_val_test_ds = DomainShiftedPathMNIST(base_ds=val_test_base, client_id=0, seed=seed)
     
     augmented_trn_test_ds = AugmentationWrapper(shifted_trn_test_ds, augmentation_transform)
-    #final_trn_test_ds = FinalNormalizeWrapper(augmented_trn_test_ds, normalize_transform)
-    #final_val_test_ds = FinalNormalizeWrapper(shifted_val_test_ds, normalize_transform)
-    
+   
     train_loaders.append(
         DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=4)
     )

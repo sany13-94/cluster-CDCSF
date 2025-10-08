@@ -52,16 +52,16 @@ backend_config = {"client_resources": {"num_cpus":1 , "num_gpus": 0.0}}
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
 # partition dataset and get dataloaders
 
-def visualize_domains_same_image(train_loaders, val_loaders, k=15, d=3, sample_idx=42):
+def visualize_from_train_loaders(train_loaders, k=15, d=3, image_idx=0):
     """
-    Visualize the same image across all domains (0, 1, 2) and the test domain.
+    Visualize the SAME batch index from representative clients across all domains.
+    Uses actual preprocessed data from train loaders (with domain shift + augmentation).
     
     Args:
-        train_loaders: List of train DataLoaders for all clients
-        val_loaders: List of val DataLoaders for all clients
+        train_loaders: List of DataLoader objects from make_pathmnist_clients_with_domains
         k: Total number of clients
         d: Number of training domains
-        sample_idx: Index of the sample to visualize
+        image_idx: Index within the batch to visualize
     """
     
     num_train_clients = k - 1
@@ -77,90 +77,75 @@ def visualize_domains_same_image(train_loaders, val_loaders, k=15, d=3, sample_i
     for i in range(num_train_clients - len(domain_assignment)):
         domain_assignment.append(i % d)
     
-    # Select one representative client from each domain
+    # Select one representative client from each training domain
     representative_clients = []
     for domain_id in range(d):
         # Find first client in this domain
         client_id = domain_assignment.index(domain_id)
         representative_clients.append(client_id)
     
-    # Add test domain client (last client, client k-1)
+    # Add test domain client (last client, k-1)
     representative_clients.append(k - 1)
     
-    print(f"[Visualization] Selected clients:")
+    print(f"\n[Visualization] Selected representative clients:")
     for i, client_id in enumerate(representative_clients[:-1]):
         print(f"  Domain {i}: Client {client_id}")
     print(f"  Test Domain (unshifted): Client {representative_clients[-1]}")
     
-    # Create figure
-    fig, axes = plt.subplots(1, d + 1, figsize=(4 * (d + 1), 4))
+    # Equipment names for display
+    equipment_names = ['High-End', 'Mid-Range', 'Older Model', 'High-End (Test)']
     
-    # Collect images and labels
+    # Create figure
+    fig, axes = plt.subplots(1, d + 1, figsize=(5 * (d + 1), 5))
+    if d + 1 == 1:
+        axes = [axes]
+    
     images = []
     labels = []
     
+    # Collect images from each representative client
     for idx, client_id in enumerate(representative_clients):
-        # Get the train loader for this client
         loader = train_loaders[client_id]
         
-        # Find the specific sample
-        found = False
-        for batch_imgs, batch_labels in loader:
-            if len(batch_imgs) > sample_idx:
-                # Get the sample
-                img = batch_imgs[sample_idx]
-                label = batch_labels[sample_idx]
-                
-                images.append(img)
-                labels.append(label.item())
-                found = True
-                break
+        # Get first batch
+        batch_imgs, batch_labels = next(iter(loader))
         
-        if not found:
-            # If sample_idx is too large, just get first sample
-            for batch_imgs, batch_labels in loader:
-                img = batch_imgs[0]
-                label = batch_labels[0]
-                images.append(img)
-                labels.append(label.item())
-                break
-    
-    # Plot images
-    for idx, (img, label) in enumerate(zip(images, labels)):
-        ax = axes[idx] if d + 1 > 1 else axes
+        # Get the image at image_idx
+        if image_idx >= len(batch_imgs):
+            image_idx = 0  # Fallback to first image if index too large
         
-        # Denormalize image for visualization
-        # Assuming normalization was applied with mean=0.5, std=0.5 for each channel
-        img_np = img.cpu().numpy()
+        img = batch_imgs[image_idx]
+        label = batch_labels[image_idx]
         
-        # Denormalize: img = (img * std) + mean
-        # Reverse: img_denorm = img * 0.5 + 0.5
-        img_denorm = img_np * 0.5 + 0.5
+        images.append(img)
+        labels.append(label.item())
         
-        # Clip to [0, 1] range
-        img_denorm = np.clip(img_denorm, 0, 1)
-        
-        # Convert from CHW to HWC for display
-        if img_denorm.shape[0] == 3:  # RGB
-            img_display = np.transpose(img_denorm, (1, 2, 0))
-        else:  # Grayscale
-            img_display = img_denorm[0]
-        
-        ax.imshow(img_display, cmap='gray' if len(img_display.shape) == 2 else None)
+        # Display image
+        ax = axes[idx]
+        img_display = prepare_image_for_display(img)
+        ax.imshow(img_display)
         ax.axis('off')
         
-        # Set title
+        # Create title
         if idx < d:
-            ax.set_title(f'Domain {idx} | Label: {label}', fontsize=12, fontweight='bold')
+            title = f'Domain {idx}\n({equipment_names[idx]})\n'
         else:
-            ax.set_title(f'Test Domain (unshifted) | Label: {label}', fontsize=12, fontweight='bold')
+            title = f'Test Domain\n(unshifted)\n'
+        title += f'Label: {label.item()}'
+        
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        
+        # Print statistics
+        domain_name = f"Domain {idx}" if idx < d else "Test Domain"
+        print(f"\n  {domain_name} (Client {client_id}):")
+        print(f"    Label: {label.item()}")
+        print(f"    Image range: [{img.min():.3f}, {img.max():.3f}]")
+        print(f"    Mean: {img.mean():.3f}, Std: {img.std():.3f}")
     
-    plt.suptitle(f'Same Image Across All Domains (Sample Index from Batch)', 
-                 fontsize=14, fontweight='bold', y=1.02)
+    plt.suptitle(f'Preprocessed Images from Train Loaders (Batch Index: {image_idx})', 
+                 fontsize=14, fontweight='bold', y=0.98)
     plt.tight_layout()
-    plt.savefig('clients_distribution.png', dpi=300, bbox_inches='tight')
-    plt.close()
-
+    plt.show()
     
     return images, labels
 
@@ -321,7 +306,7 @@ def main(cfg: DictConfig) -> None:
 
     trainloaders, valloaders=data_load(cfg)
     print("🔍 Visualizing same image index across clients to inspect domain shifts...")
-    visualize_domains_same_image(trainloaders, valloaders, k=15, d=3, sample_idx=0)
+    visualize_from_train_loaders(trainloaders, k=15, d=3, image_idx=0)
 
     # Print data distribution before visualization
    
