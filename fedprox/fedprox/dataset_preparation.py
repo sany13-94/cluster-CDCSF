@@ -249,8 +249,32 @@ def make_pathmnist_clients_with_domains(
         g_split = torch.Generator().manual_seed(seed + client_id)
         trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
         
+
+        #sauvegarder original images from dataset
+
+        
+        # Extraire un petit batch
+        loader = DataLoader(partition_ds, batch_size=8, shuffle=True)
+        images, labels = next(iter(loader))
+        
+        
+
         # USE DOMAIN ID instead of client_id for domain shift
         domain_id = domain_assignment[client_id]
+
+        # Créer une grille d’images
+        save_path = os.path.join(save_dir, f"domainclient.png")
+
+        img_grid = make_grid(images, nrow=4, normalize=True)
+        plt.figure(figsize=(6, 6))
+        plt.imshow(img_grid.permute(1, 2, 0))
+        plt.title(f"Originals - Domain {domain_id} - Client {client_id}")
+        plt.axis("off")
+        plt.tight_layout()
+
+        # Sauvegarder dans un fichier PNG
+        plt.savefig(save_path)
+        plt.close()
         
         # Apply domain shift based on domain_id (NOT client_id)
         shifted_trn_ds = DomainShiftedPathMNIST(
