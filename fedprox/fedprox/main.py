@@ -158,7 +158,9 @@ def visualize_domains_same_image(train_loaders, val_loaders, k=15, d=3, sample_i
     plt.suptitle(f'Same Image Across All Domains (Sample Index from Batch)', 
                  fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
-    plt.show()
+    plt.savefig('clients_distribution.png', dpi=300, bbox_inches='tight')
+    plt.close()
+
     
     return images, labels
 
