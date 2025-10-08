@@ -263,7 +263,7 @@ def make_pathmnist_clients_with_domains(
         domain_id = domain_assignment[client_id]
 
         # Créer une grille d’images
-        save_path = os.path.join(save_dir, f"domainclient.png")
+        save_path = os.path.join(f"domainclient.png")
 
         img_grid = make_grid(images, nrow=4, normalize=True)
         plt.figure(figsize=(6, 6))
