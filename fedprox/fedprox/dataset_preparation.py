@@ -208,7 +208,6 @@ def make_pathmnist_clients_with_domains(
     """
     
     augmentation_transform = build_augmentation_transform()
-    normalize_transform = get_final_normalize_transform()
     
     ds_train = LazyPathMNIST(split='train')
     ds_test = LazyPathMNIST(split='test')
