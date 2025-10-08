@@ -84,7 +84,7 @@ class GPAFStrategy(FedAvg):
         self.warmup_rounds = 10  # Stage 1 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
-        self.clustering_interval = 10
+        self.clustering_interval = 5
         
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
@@ -100,7 +100,6 @@ class GPAFStrategy(FedAvg):
         # Core parameters from corrected methodology
        
       
-        self.clustering_interval = 10  # Cluster every 10 rounds
         self.virtual_cluster_id = 999
         
         # Tracking
@@ -119,7 +118,7 @@ class GPAFStrategy(FedAvg):
         initial_alpha1: float = 0.6  # Initial reliability weight
         initial_alpha2: float = 0.4  # Initial fairness weight
         phase_threshold: int = 20  # Round to switch weight emphasis
-        total_rounds: int = 3
+        total_rounds: int = 15
       
 
 
