@@ -68,25 +68,25 @@ class SameModalityDomainShift:
         Each domain represents different equipment quality.
         """
         equipment_profiles = {
-            0: {  # High-End Equipment
-                'name': 'high_end',
-                'noise_level': 0.00,
-                'contrast_scale': 1.0,
-                'brightness_shift': 0.0,
-            },
-            1: {  # Mid-Range Equipment
-                'name': 'mid_range',
-                'noise_level': 0.15,
-                'contrast_scale': 0.7,
-                'brightness_shift': 0.3,
-            },
-            2: {  # Older Model Equipment
-                'name': 'older_model',
-                'noise_level': 0.25,
-                'contrast_scale': 0.5,
-                'brightness_shift': 0.5,
-            }
-        }
+    0: {  # High-End Equipment
+        'name': 'high_end',
+        'noise_level': 0.00,
+        'contrast_scale': 1.0,
+        'brightness_shift': 0.0,
+    },
+    1: {  # Mid-Range Equipment
+        'name': 'mid_range',
+        'noise_level': 0.08,        # Reduced from 0.15
+        'contrast_scale': 0.75,     # Reduced from 0.7
+        'brightness_shift': 0.15,   # Reduced from 0.3
+    },
+    2: {  # Older Model Equipment
+        'name': 'older_model',
+        'noise_level': 0.15,        # Keep or slightly reduce
+        'contrast_scale': 0.60,     # Increased from 0.5
+        'brightness_shift': 0.20,   # CRITICAL: Reduced from 0.5
+    }
+}
         
         # Get profile for this domain (with fallback to high-end)
         profile = equipment_profiles.get(self.domain_id, equipment_profiles[0])
