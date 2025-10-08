@@ -51,7 +51,15 @@ backend_config = {"client_resources": {"num_cpus":1 , "num_gpus": 0.0}}
 # When running on GPU, assign an entire GPU for each client
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
 # partition dataset and get dataloaders
-
+def prepare_image_for_display(img_tensor):
+    """Helper function to prepare tensor for matplotlib display."""
+    img_np = img_tensor.detach().cpu().numpy()
+    img_np = np.clip(img_np, 0, 1)
+    
+    if img_np.shape[0] == 3:  # RGB
+        return np.transpose(img_np, (1, 2, 0))
+    else:  # Grayscale
+        return img_np[0]
 def visualize_from_train_loaders(train_loaders, k=15, d=3, image_idx=0):
     """
     Visualize the SAME batch index from representative clients across all domains.
