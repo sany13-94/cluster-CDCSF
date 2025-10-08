@@ -788,6 +788,7 @@ save_dir="feature_visualizations_gpaf"
     
       for cluster_id in sorted(clusters.keys()):
         cluster_clients = clusters[cluster_id]
+        print(f'clusters ====== {cluster_clients}====')
         allocation = cluster_allocations.get(cluster_id, 0)
         
         if allocation == 0:
@@ -797,7 +798,7 @@ save_dir="feature_visualizations_gpaf"
             "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
         )
         
-        print(f"\n[Cluster {cluster_id} - {cluster_type}]")
+        print(f"\n[Cluster {cluster_id} - type de cluster : {cluster_type}]")
         
         # Sort by global score (descending)
         cluster_clients_sorted = sorted(
