@@ -41,7 +41,7 @@ import numpy as np
 from flwr.server.strategy import Strategy
 from flwr.server.client_manager import ClientManager
 import os
-
+from fedprox.visualizeprototypes.py import ClusterVisualizationForConfigureFit
 
 from flwr.common import (
     EvaluateIns,
@@ -99,7 +99,11 @@ class GPAFStrategy(FedAvg):
         # ... existing initialization ...
         # Core parameters from corrected methodology
        
-      
+        true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
+        self.visualizer = ClusterVisualizationForConfigureFit(
+            save_dir="./clustering_visualizations",
+            true_domain_labels=true_domain_labels
+        )
         self.virtual_cluster_id = 999
         
         # Tracking
@@ -654,11 +658,43 @@ save_dir="feature_visualizations_gpaf"
                 cluster_clients = [cid for cid, clust in self.client_assignments.items() 
                                  if clust == cluster_id]
                 if cluster_clients:
-                    print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
+        
+                   print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
+
+            #visualize 
+
+            # === ADD VISUALIZATION HERE ===
+            self.visualizer.visualize_clustering_from_prototypes(
+            all_prototypes_list=all_prototypes_list,
+            client_ids=all_client_ids,
+            client_assignments=self.client_assignments,
+              server_round=server_round,
+              num_clusters=self.num_clusters,
+                save=True)
+            # Also plot statistics
+            predicted = np.array([self.client_assignments.get(cid, -1) for cid in all_client_ids])
+            true_domains = np.array([self.visualizer._get_true_domain_for_client(cid) for cid in all_client_ids])
+            self.visualizer.plot_clustering_statistics(
+        predicted_clusters=predicted,
+        true_domains=true_domains,
+        client_ids=all_client_ids,
+        server_round=server_round,
+        save=True
+    )
+            # Also plot statistics
+            predicted = np.array([self.client_assignments.get(cid, -1) for cid in all_client_ids])
+            true_domains = np.array([self.visualizer._get_true_domain_for_client(cid) for cid in all_client_ids])
+            self.visualizer.plot_clustering_statistics(
+        predicted_clusters=predicted,
+        true_domains=true_domains,
+        client_ids=all_client_ids,
+        server_round=server_round,
+        save=True
+    )
         else:
             print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
             print(f"  Will use unified pool selection")
-
+            
       # =================================================================
       # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS OR UNIFIED POOL
       # =================================================================
@@ -838,7 +874,7 @@ save_dir="feature_visualizations_gpaf"
             
             # Update selection counts
             self.selection_counts[client_id] = self.selection_counts.get(client_id, 0) + 1
-
+      
       # =================================================================
       # FINAL SUMMARY
       # =================================================================
