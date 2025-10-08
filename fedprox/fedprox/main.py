@@ -52,39 +52,115 @@ backend_config = {"client_resources": {"num_cpus":1 , "num_gpus": 0.0}}
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')   
 # partition dataset and get dataloaders
 
-def visualize_same_image_across_clients(trainloaders, image_idx=42, num_clients_to_show=6, save_path="visual_same_image.png"):
-    """Visualize the same image index across different clients to confirm domain shifts."""
-    import matplotlib.pyplot as plt
-    import torch
-
-    fig, axes = plt.subplots(1, num_clients_to_show, figsize=(4 * num_clients_to_show, 4))
-    axes = axes.flatten()
-
-    for i in range(num_clients_to_show):
-        client_dataset = trainloaders[i].dataset
-        # Ensure we don’t exceed dataset length
-        idx = min(image_idx, len(client_dataset) - 1)
-        image, label = client_dataset[idx]
-
-        # Move channels to last dimension
-        if isinstance(image, torch.Tensor):
-            img_np = image.permute(1, 2, 0).cpu().numpy()
+def visualize_domains_same_image(train_loaders, val_loaders, k=15, d=3, sample_idx=42):
+    """
+    Visualize the same image across all domains (0, 1, 2) and the test domain.
+    
+    Args:
+        train_loaders: List of train DataLoaders for all clients
+        val_loaders: List of val DataLoaders for all clients
+        k: Total number of clients
+        d: Number of training domains
+        sample_idx: Index of the sample to visualize
+    """
+    
+    num_train_clients = k - 1
+    clients_per_domain = num_train_clients // d
+    
+    # Build domain assignment (same logic as in make_pathmnist_clients_with_domains)
+    domain_assignment = []
+    for domain_id in range(d):
+        for _ in range(clients_per_domain):
+            domain_assignment.append(domain_id)
+    
+    # Handle remaining clients
+    for i in range(num_train_clients - len(domain_assignment)):
+        domain_assignment.append(i % d)
+    
+    # Select one representative client from each domain
+    representative_clients = []
+    for domain_id in range(d):
+        # Find first client in this domain
+        client_id = domain_assignment.index(domain_id)
+        representative_clients.append(client_id)
+    
+    # Add test domain client (last client, client k-1)
+    representative_clients.append(k - 1)
+    
+    print(f"[Visualization] Selected clients:")
+    for i, client_id in enumerate(representative_clients[:-1]):
+        print(f"  Domain {i}: Client {client_id}")
+    print(f"  Test Domain (unshifted): Client {representative_clients[-1]}")
+    
+    # Create figure
+    fig, axes = plt.subplots(1, d + 1, figsize=(4 * (d + 1), 4))
+    
+    # Collect images and labels
+    images = []
+    labels = []
+    
+    for idx, client_id in enumerate(representative_clients):
+        # Get the train loader for this client
+        loader = train_loaders[client_id]
+        
+        # Find the specific sample
+        found = False
+        for batch_imgs, batch_labels in loader:
+            if len(batch_imgs) > sample_idx:
+                # Get the sample
+                img = batch_imgs[sample_idx]
+                label = batch_labels[sample_idx]
+                
+                images.append(img)
+                labels.append(label.item())
+                found = True
+                break
+        
+        if not found:
+            # If sample_idx is too large, just get first sample
+            for batch_imgs, batch_labels in loader:
+                img = batch_imgs[0]
+                label = batch_labels[0]
+                images.append(img)
+                labels.append(label.item())
+                break
+    
+    # Plot images
+    for idx, (img, label) in enumerate(zip(images, labels)):
+        ax = axes[idx] if d + 1 > 1 else axes
+        
+        # Denormalize image for visualization
+        # Assuming normalization was applied with mean=0.5, std=0.5 for each channel
+        img_np = img.cpu().numpy()
+        
+        # Denormalize: img = (img * std) + mean
+        # Reverse: img_denorm = img * 0.5 + 0.5
+        img_denorm = img_np * 0.5 + 0.5
+        
+        # Clip to [0, 1] range
+        img_denorm = np.clip(img_denorm, 0, 1)
+        
+        # Convert from CHW to HWC for display
+        if img_denorm.shape[0] == 3:  # RGB
+            img_display = np.transpose(img_denorm, (1, 2, 0))
+        else:  # Grayscale
+            img_display = img_denorm[0]
+        
+        ax.imshow(img_display, cmap='gray' if len(img_display.shape) == 2 else None)
+        ax.axis('off')
+        
+        # Set title
+        if idx < d:
+            ax.set_title(f'Domain {idx} | Label: {label}', fontsize=12, fontweight='bold')
         else:
-            img_np = np.array(image)
-
-        # Clamp and normalize for display
-        img_np = np.clip(img_np, 0, 1)
-
-        axes[i].imshow(img_np)
-        axes[i].set_title(f"Client {i} | Label: {label}")
-        axes[i].axis("off")
-
-    plt.suptitle(f"Same Image Index ({image_idx}) Across Clients", fontsize=16)
+            ax.set_title(f'Test Domain (unshifted) | Label: {label}', fontsize=12, fontweight='bold')
+    
+    plt.suptitle(f'Same Image Across All Domains (Sample Index from Batch)', 
+                 fontsize=14, fontweight='bold', y=1.02)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"Saved visualization: {save_path}")
-
+    plt.show()
+    
+    return images, labels
 
 def visualize_intensity_distributions(trainloaders: List[DataLoader], num_clients: int):
     plt.figure(figsize=(12, 6))
@@ -243,12 +319,8 @@ def main(cfg: DictConfig) -> None:
 
     trainloaders, valloaders=data_load(cfg)
     print("🔍 Visualizing same image index across clients to inspect domain shifts...")
-    visualize_same_image_across_clients(
-    trainloaders=trainloaders,
-    image_idx=42,            # you can change this index to test others
-    num_clients_to_show=min(cfg.num_clients, 6),
-    save_path="visual_same_image.png"
-)
+    visualize_domains_same_image(trainloaders, valloaders, k=15, d=3, sample_idx=0)
+
     # Print data distribution before visualization
    
         
