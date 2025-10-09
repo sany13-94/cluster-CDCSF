@@ -41,7 +41,7 @@ import numpy as np
 from flwr.server.strategy import Strategy
 from flwr.server.client_manager import ClientManager
 import os
-from fedprox.visualizeprototypes.py import ClusterVisualizationForConfigureFit
+from fedprox.visualizeprototypes import ClusterVisualizationForConfigureFit
 
 from flwr.common import (
     EvaluateIns,
