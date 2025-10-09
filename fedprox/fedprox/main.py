@@ -389,8 +389,8 @@ def main(cfg: DictConfig) -> None:
           num_supernodes=cfg.num_clients,
       backend_config= {
             "num_cpus": cfg.client_resources.num_cpus,
-            "num_gpus": cfg.client_resources.num_gpus,
-            'client_resources': {'num_cpus': 2, 'num_gpus':cfg.client_resources.num_gpus }
+            #"num_gpus": cfg.client_resources.num_gpus,
+            #'client_resources': {'num_cpus': 2, 'num_gpus':cfg.client_resources.num_gpus }
             }
        
       
