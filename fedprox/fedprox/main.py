@@ -22,6 +22,7 @@ from  mlflow.tracking import MlflowClient
 import time
 import nest_asyncio
 from flwr.common import ConfigsRecord, MetricsRecord, ParametersRecord
+from fedprox.strategy import FedAVGWithEval
 import os
 import subprocess
 #from fedprox.mlflowtracker import setup_tracking
@@ -265,10 +266,10 @@ def get_server_fn(mlflow=None):
       
       strategyi = FedAVGWithEval(
       fraction_fit=1.0,  # Train with 50% of available clients
-      fraction_evaluate=0.5,  # Evaluate with all available clients
+      fraction_evaluate=1,  # Evaluate with all available clients
       min_fit_clients=8,
-      min_evaluate_clients=2,
-      min_available_clients=3,
+      min_evaluate_clients=8,
+      min_available_clients=8,
       evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,  # Add this
 
       on_evaluate_config_fn=get_on_evaluate_config_fn(),

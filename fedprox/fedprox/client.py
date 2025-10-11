@@ -422,13 +422,14 @@ cfg=None  ,
         latent_dim = 64
         num_classes = 9
         num_epochs=3
-        
+        #the same model for all methods
+        model = ModelCDCSF(out_dim=256, n_classes=9).to(device)
                
         if strategy=="gpaf":
           
           #img_shape=(28,28)
           #model = ModelCDCSF(latent_dim).to(device)
-          model = ModelCDCSF(out_dim=256, n_classes=9).to(device)
+          
 
           trainloader = trainloaders[int(cid)]
           # Initialize the feature visualizer for all clients
@@ -591,7 +592,8 @@ class FlowerClient(NumPyClient):
             #print(f'after labels shape hh {labels.shape}')
             #print(labels)
             optimizer.zero_grad()
-            outputs = net(images)
+            #outputs = net(images)
+            h, _, outputs =  net(images)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -601,7 +603,7 @@ class FlowerClient(NumPyClient):
             correct += (torch.max(outputs.data, 1)[1] == labels).sum().item()
         epoch_loss /= len(trainloader.dataset)
         epoch_acc = correct / total
-        save_client_model_moon(client_id, net)
+        #save_client_model_moon(client_id, net)
         print(f"Epoch {epoch+1}: train loss {epoch_loss}, accuracy {epoch_acc} of client : {client_id}")
 
 
@@ -622,7 +624,8 @@ class FlowerClient(NumPyClient):
             images, labels = batch
             labels=labels.squeeze(1)
             
-            outputs = net(images)
+            #outputs = net(images)
+            h, _, outputs =  net(images)
             loss += criterion(outputs, labels).item()
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
