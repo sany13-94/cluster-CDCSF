@@ -785,7 +785,9 @@ save_dir="feature_visualizations_gpaf"
         # Domain-aware: distribute across clusters
         base_per_cluster = max(1, self.min_fit_clients // total_clusters)
         remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
-        
+       
+
+        #cc
         print(f"Total selection budget: {self.min_fit_clients} clients")
         print(f"Active clusters: {total_clusters}")
         print(f"Base per cluster: {base_per_cluster}")

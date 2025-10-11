@@ -41,6 +41,7 @@ class ClusterVisualizationForConfigureFit:
         perplexity: int = 30,
         save: bool = True
     ):
+    
         """
         Visualize clustering results using t-SNE on client prototypes.
         
