@@ -436,7 +436,7 @@ cfg=None  ,
 
 
           images, labels = next(iter(trainloader))
-          print(f"Saved sample image for client {cid} (label={images[0].item()})")
+          print(f"Saved sample image for client {cid} (label={images[0]})")
           print(f"====doain_assignment: {domain_assignment}====")
           # Initialize the feature visualizer for all clients
           feature_visualizer = StructuredFeatureVisualizer(
