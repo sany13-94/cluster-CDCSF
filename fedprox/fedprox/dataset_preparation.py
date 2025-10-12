@@ -332,9 +332,16 @@ def make_pathmnist_clients_with_domains(
         DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, 
                   pin_memory=True, num_workers=4)
     )
-    images, labels = next(iter(train_loaders[0]))
-    print(f"Partition 0 first sample image:  {images[0]}")
-    print(f"Partition 1 first sample image:  {images[0]}")
+    images, labels = next(iter(train_loaders[3]))
+    print(f"Partition 3 first sample image:  {images[0]}")
+    images, labels = next(iter(train_loaders[7]))
+    print(f"Partition 7 first sample image:  {images[0]}")
+    images, labels = next(iter(train_loaders[10]))
+    print(f"Partition 10 first sample image:  {images[0]}")
+    images, labels = next(iter(train_loaders[5]))
+    print(f"Partition 5 first sample image:  {images[0]}")
+    images, labels = next(iter(train_loaders[8]))
+    print(f"Partition 8 first sample image:  {images[0]}")
 
     
     return train_loaders, val_loaders, domain_assignment
