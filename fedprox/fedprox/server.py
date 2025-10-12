@@ -848,7 +848,7 @@ save_dir="feature_visualizations_gpaf"
         cluster_selection = cluster_clients_sorted[:num_to_select]
         selected_clients_cids.extend(cluster_selection)
         
-        print(f"  Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
+        print(f"Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
         
         # Show detailed scores for top selections
         for i, cid in enumerate(cluster_selection[:5]):

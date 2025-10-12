@@ -91,7 +91,7 @@ def load_datasets(  # pylint: disable=too-many-arguments
     # Create domain-shifted dataloaders
     if domain_shift==True:
       d=3
-      trainset, valsets = make_pathmnist_clients_with_domains(
+      trainset, valsets,domain_assignment = make_pathmnist_clients_with_domains(
         num_clients,
         d,
         batch_size

@@ -313,7 +313,9 @@ def main(cfg: DictConfig) -> None:
     # print config structured as YAML
     print(OmegaConf.to_yaml(cfg))
 
-    trainloaders, valloaders=data_load(cfg)
+    trainloaders, valloaders,domain_assignment=data_load(cfg)
+
+
     print("🔍 Visualizing same image index across clients to inspect domain shifts...")
     visualize_from_train_loaders(trainloaders, k=15, d=3, image_idx=0)
 
@@ -347,7 +349,7 @@ def main(cfg: DictConfig) -> None:
     if strategy=="gpaf":
       # à chaque client Ray dans la simulation.
      
-      print(f'2: {valloaders[0]}')
+      #print(f'2: {valloaders[0]}')
       client_fn = gen_client_fn(
         num_clients=cfg.num_clients,
         num_epochs=cfg.num_epochs,
@@ -356,7 +358,8 @@ def main(cfg: DictConfig) -> None:
         num_rounds=cfg.num_rounds,
         learning_rate=cfg.learning_rate,
         experiment_name=experiment_name,
-        strategy=strategy
+        strategy=strategy,
+        domain_assignment=domain_assignment
        )
       
     
@@ -403,14 +406,14 @@ def main(cfg: DictConfig) -> None:
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
 def data_load(cfg: DictConfig):
-  trainloaders, valloaders = load_datasets(
+  trainloaders, valloaders,domain_assignment = load_datasets(
         config=cfg.dataset_config,
         num_clients=cfg.num_clients,
         batch_size=cfg.batch_size,
         domain_shift=True
     )
   print(f'1: {valloaders[0]}')
-  return trainloaders, valloaders   
+  return trainloaders, valloaders ,domain_assignment 
 if __name__ == "__main__":
     
     main()

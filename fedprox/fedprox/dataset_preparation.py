@@ -309,6 +309,8 @@ def make_pathmnist_clients_with_domains(
             DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, 
                       pin_memory=True, num_workers=4)
         )
+        print(f"Partition 1 first sample image: {augmented_trn_ds[1][1][1]}")
+
     
     # Create test domain client (unshifted, domain_id=0)
     n_val_test = int(len(ds_test) * val_ratio)
@@ -332,7 +334,7 @@ def make_pathmnist_clients_with_domains(
                   pin_memory=True, num_workers=4)
     )
     
-    return train_loaders, val_loaders
+    return train_loaders, val_loaders, domain_assignment
 
 
 def save_domain_samples(partition_ds, domain_id, client_id):

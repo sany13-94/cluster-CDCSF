@@ -388,6 +388,7 @@ def gen_client_fn(
     model=None,
 experiment_name =None,
 strategy='fedavg',
+domain_assignment=None,
 cfg=None  ,
  device= torch.device("cuda")
 
@@ -415,7 +416,7 @@ cfg=None  ,
     
       with mlflow.start_run(experiment_id=experiment.experiment_id, run_id=run_ids[str(cid)][0],nested=True) as run:
         run_id = run.info.run_id
-        print(f"Created MLflow run for client {cid}: {run_id}")
+        #print(f"Created MLflow run for client {cid}: {run_id}")
         
         input_dim = 28  # Example: 28x28 images flattened
         hidden_dim = 128
@@ -432,6 +433,8 @@ cfg=None  ,
           
 
           trainloader = trainloaders[int(cid)]
+          print(f"[Client {cid}] First image in trainloader: {next(iter(trainloader))[1][1].item()}")
+          print(f"====domain_assignment: {domain_assignment}====")
           # Initialize the feature visualizer for all clients
           feature_visualizer = StructuredFeatureVisualizer(
         num_clients=num_clients,  # total number of clients
