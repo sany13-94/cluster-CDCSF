@@ -433,8 +433,11 @@ cfg=None  ,
           
 
           trainloader = trainloaders[int(cid)]
-          print(f"[Client {cid}] First image in trainloader: {next(iter(trainloader))[0][0].item()}")
-          print(f"====domain_assignment: {domain_assignment}====")
+
+
+          images, labels = next(iter(trainloader))
+          print(f"Saved sample image for client {cid} (label={images[0].item()})")
+          print(f"====doain_assignment: {domain_assignment}====")
           # Initialize the feature visualizer for all clients
           feature_visualizer = StructuredFeatureVisualizer(
         num_clients=num_clients,  # total number of clients
