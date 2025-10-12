@@ -133,4 +133,4 @@ def load_datasets(  # pylint: disable=too-many-arguments
 
        save_splits(num_clients,trainloaders, valloaders, testloaders)
         
-    return trainset, valsets
+    return trainset, valsets,domain_assignment
