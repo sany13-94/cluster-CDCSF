@@ -445,10 +445,9 @@ cfg=None  ,
           images, labels = next(iter(trainloader))
           print(f"Saved sample image for client {cid} (label={images[0]})")
           # Extract the raw dataset underlying this DataLoader
-          raw_partition = trainloader.dataset.base  # depends on your wrapper structure
-          client_signature = get_client_signature(raw_partition)
-
-          print(f"[Client {cid}] Signature: {client_signature}")
+          # Access the original client_id stored in the dataset
+          dataset_client_id = trainloader.dataset.client_id
+          print(f"[Client {cid}] dataset_client_id = {dataset_client_id}")
 
           print(f"====doain_assignment: {domain_assignment}====")
           # Initialize the feature visualizer for all clients
