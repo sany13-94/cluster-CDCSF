@@ -597,10 +597,7 @@ save_dir="feature_visualizations_gpaf"
         # Collect prototypes from ALL participated clients
         for cid in participated_available:
             client_proxy = all_clients[cid]
-            props = client_proxy.get_properties(config={})
-            domain_id = props.get("domain_id", None)
-            domains_ids[cid]=domain_id
-            print(f'==== clients domains {domains_ids}=====')
+            
             try:
                 get_protos_res = client_proxy.get_properties(
                     ins=GetPropertiesIns(config={"request": "prototypes"}), 
@@ -610,7 +607,9 @@ save_dir="feature_visualizations_gpaf"
                 
                 prototypes_encoded = get_protos_res.properties.get("prototypes")
                 class_counts_encoded = get_protos_res.properties.get("class_counts")
-
+                domain_id =get_protos_res.properties.get("domain_id", None)
+                domains_ids[cid]=domain_id
+                print(f'==== clients domains {domains_ids}=====')
                 if prototypes_encoded and class_counts_encoded:
                     try:
                         prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
