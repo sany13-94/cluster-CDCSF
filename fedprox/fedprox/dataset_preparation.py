@@ -347,8 +347,32 @@ def make_pathmnist_clients_with_domains(
     images, labels = next(iter(train_loaders[8]))
     print(f"Partition 8 first sample image:  {images[0]}")
 
+    # Generate and print signatures for each client
+    print("\n[DATASET SIGNATURES]")
+    client_signatures = []
+    for client_id, loader in enumerate(train_loaders):
+      sig = get_loader_signature(loader)
+      client_signatures.append(sig)
+      print(f"Client {client_id:2d} | Signature: {sig}")
+
+    # (Optional) Save to file
+    with open("client_signatures.txt", "w") as f:
+      for cid, sig in enumerate(client_signatures):
+        f.write(f"{cid},{sig}\n")
+   
     
     return train_loaders, val_loaders, domain_assignment + [3]
+
+
+import hashlib
+
+def get_loader_signature(loader):
+    """Compute a hash signature of the first few image-label pairs."""
+    images, labels = next(iter(loader))
+    tensor_bytes = images[:5].numpy().tobytes() + labels[:5].numpy().tobytes()
+    return hashlib.md5(tensor_bytes).hexdigest()
+
+
 
 
 def save_domain_samples(partition_ds, domain_id, client_id):

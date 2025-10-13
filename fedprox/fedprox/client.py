@@ -377,6 +377,14 @@ class FederatedClient(fl.client.NumPyClient):
             time.sleep(delay)
 
 
+import hashlib
+
+def get_loader_signature(loader):
+    images, labels = next(iter(loader))
+    tensor_bytes = images[:5].numpy().tobytes() + labels[:5].numpy().tobytes()
+    return hashlib.md5(tensor_bytes).hexdigest()
+
+
 
 def gen_client_fn(
     num_clients: int,
@@ -425,7 +433,7 @@ cfg=None  ,
         num_epochs=3
         #the same model for all methods
         model = ModelCDCSF(out_dim=256, n_classes=9).to(device)
-        
+
                
         if strategy=="gpaf":
           
@@ -438,6 +446,9 @@ cfg=None  ,
 
           images, labels = next(iter(trainloader))
           print(f"Saved sample image for client {cid} (label={images[0]})")
+          sig = get_loader_signature(trainloader)
+          print(f"[Client {cid}] Dataset signature: {sig}")
+
           print(f"====doain_assignment: {domain_assignment}====")
           # Initialize the feature visualizer for all clients
           feature_visualizer = StructuredFeatureVisualizer(
