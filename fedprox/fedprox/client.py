@@ -377,14 +377,12 @@ class FederatedClient(fl.client.NumPyClient):
             time.sleep(delay)
 
 
-import hashlib
+from hashlib import md5
 
-def get_loader_signature(loader):
-    images, labels = next(iter(loader))
-    tensor_bytes = images[:5].numpy().tobytes() + labels[:5].numpy().tobytes()
-    return hashlib.md5(tensor_bytes).hexdigest()
-
-
+def get_client_signature(dataset_subset):
+    """Return a deterministic signature for a Subset based on its indices."""
+    indices_bytes = str(dataset_subset.indices).encode()
+    return md5(indices_bytes).hexdigest()
 
 def gen_client_fn(
     num_clients: int,
@@ -446,8 +444,11 @@ cfg=None  ,
 
           images, labels = next(iter(trainloader))
           print(f"Saved sample image for client {cid} (label={images[0]})")
-          sig = get_loader_signature(trainloader)
-          print(f"[Client {cid}] Dataset signature: {sig}")
+          # Extract the raw dataset underlying this DataLoader
+          raw_partition = trainloader.dataset.base_dataset  # depends on your wrapper structure
+          client_signature = get_client_signature(raw_partition)
+
+          print(f"[Client {cid}] Signature: {client_signature}")
 
           print(f"====doain_assignment: {domain_assignment}====")
           # Initialize the feature visualizer for all clients

@@ -318,6 +318,12 @@ def make_pathmnist_clients_with_domains(
     trn_test_base, val_test_base = random_split(ds_test, [n_trn_test, n_val_test], 
                                                  generator=g_test_split)
     
+    # Example for your train_loaders
+    client_signatures = []
+    for client_id, partition_ds in enumerate(raw_train_partitions):
+      signature = get_client_signature(partition_ds)
+      print(f"Client {client_id} | Signature: {signature}")
+      client_signatures.append(signature)
    
     augmented_trn_test_ds = AugmentationWrapper(trn_test_base, augmentation_transform)
    
@@ -348,17 +354,7 @@ def make_pathmnist_clients_with_domains(
     print(f"Partition 8 first sample image:  {images[0]}")
 
     # Generate and print signatures for each client
-    print("\n[DATASET SIGNATURES]")
-    client_signatures = []
-    for client_id, loader in enumerate(train_loaders):
-      sig = get_loader_signature(loader)
-      client_signatures.append(sig)
-      print(f"Client {client_id:2d} | Signature: {sig}")
-
-    # (Optional) Save to file
-    with open("client_signatures.txt", "w") as f:
-      for cid, sig in enumerate(client_signatures):
-        f.write(f"{cid},{sig}\n")
+    
    
     
     return train_loaders, val_loaders, domain_assignment + [3]
@@ -366,13 +362,12 @@ def make_pathmnist_clients_with_domains(
 
 import hashlib
 
-def get_loader_signature(loader):
-    """Compute a hash signature of the first few image-label pairs."""
-    images, labels = next(iter(loader))
-    tensor_bytes = images[:5].numpy().tobytes() + labels[:5].numpy().tobytes()
-    return hashlib.md5(tensor_bytes).hexdigest()
+def get_client_signature(dataset_subset):
+    """Return a deterministic signature for a Subset based on its indices."""
+    indices_bytes = str(dataset_subset.indices).encode()
+    return md5(indices_bytes).hexdigest()
 
-
+# Example for y
 
 
 def save_domain_samples(partition_ds, domain_id, client_id):
