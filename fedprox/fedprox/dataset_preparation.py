@@ -318,20 +318,19 @@ def make_pathmnist_clients_with_domains(
     trn_test_base, val_test_base = random_split(ds_test, [n_trn_test, n_val_test], 
                                                  generator=g_test_split)
     
-    # Test domain is unshifted (domain_id=0)
-    shifted_trn_test_ds = DomainShiftedPathMNIST(base_ds=trn_test_base, domain_id=0, seed=seed)
-    shifted_val_test_ds = DomainShiftedPathMNIST(base_ds=val_test_base, domain_id=0, seed=seed)
-    
-    augmented_trn_test_ds = AugmentationWrapper(shifted_trn_test_ds, augmentation_transform)
+   
+    augmented_trn_test_ds = AugmentationWrapper(trn_test_base, augmentation_transform)
    
     train_loaders.append(
         DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, 
                   pin_memory=True, num_workers=4)
     )
     val_loaders.append(
-        DataLoader(shifted_val_test_ds, batch_size=batch_size, shuffle=False, 
+        DataLoader(val_test_base, batch_size=batch_size, shuffle=False, 
                   pin_memory=True, num_workers=4)
     )
+
+    print(f'=== train data size {len(train_loaders)}====')
     images, labels = next(iter(train_loaders[3]))
     print(f"Partition 3 first sample image:  {images[0]}")
     images, labels = next(iter(train_loaders[7]))
