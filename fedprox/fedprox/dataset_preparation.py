@@ -330,6 +330,11 @@ def make_pathmnist_clients_with_domains(
                   pin_memory=True, num_workers=4)
     )
 
+    print(f"\n[SUMMARY]")
+    for i, loader in enumerate(train_loaders):
+      print(f"Client {i} | Domain ID: {domain_assignment[i] if i < len(domain_assignment) else 'extra_domain'} | #Batches: {len(loader)}")
+
+
     print(f'=== train data size {len(train_loaders)}====')
     images, labels = next(iter(train_loaders[3]))
     print(f"Partition 3 first sample image:  {images[0]}")
