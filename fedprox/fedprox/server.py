@@ -593,10 +593,14 @@ save_dir="feature_visualizations_gpaf"
         all_client_ids = []
         class_counts_list = []
         clients_with_prototypes = []
-        
+        domains_ids={}
         # Collect prototypes from ALL participated clients
         for cid in participated_available:
             client_proxy = all_clients[cid]
+            props = client_proxy.get_properties(config={})
+            domain_id = props.get("domain_id", None)
+            domains_ids[cid]=domain_id
+            print(f'==== clients domains {domains_ids}=====')
             try:
                 get_protos_res = client_proxy.get_properties(
                     ins=GetPropertiesIns(config={"request": "prototypes"}), 
