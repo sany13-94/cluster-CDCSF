@@ -425,6 +425,7 @@ cfg=None  ,
         num_epochs=3
         #the same model for all methods
         model = ModelCDCSF(out_dim=256, n_classes=9).to(device)
+        
                
         if strategy=="gpaf":
           

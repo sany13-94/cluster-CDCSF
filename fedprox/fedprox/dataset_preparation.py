@@ -302,7 +302,7 @@ def make_pathmnist_clients_with_domains(
         augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, augmentation_transform)
         
         train_loaders.append(
-            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=True, 
+            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=False, 
                       pin_memory=True, num_workers=4)
         )
         val_loaders.append(
@@ -322,7 +322,7 @@ def make_pathmnist_clients_with_domains(
     augmented_trn_test_ds = AugmentationWrapper(trn_test_base, augmentation_transform)
    
     train_loaders.append(
-        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=True, 
+        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=False, 
                   pin_memory=True, num_workers=4)
     )
     val_loaders.append(
@@ -348,7 +348,7 @@ def make_pathmnist_clients_with_domains(
     print(f"Partition 8 first sample image:  {images[0]}")
 
     
-    return train_loaders, val_loaders, domain_assignment
+    return train_loaders, val_loaders, domain_assignment + [3]
 
 
 def save_domain_samples(partition_ds, domain_id, client_id):
