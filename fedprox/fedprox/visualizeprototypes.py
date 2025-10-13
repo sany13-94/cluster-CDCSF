@@ -24,7 +24,7 @@ class ClusterVisualizationForConfigureFit:
         self.save_dir = save_dir
         os.makedirs(save_dir, exist_ok=True)
         
-        self.true_domain_labels = true_domain_labels
+      
         self.history = []  # Store clustering history for evolution plots
         
         # Set style
@@ -35,6 +35,7 @@ class ClusterVisualizationForConfigureFit:
         self,
         all_prototypes_list: List[Dict],
         client_ids: List[str],
+          self.true_domain_labels = true_domain_labels,
         client_assignments: Dict[str, int],
         server_round: int,
         num_clusters: int,
