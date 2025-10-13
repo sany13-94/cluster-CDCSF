@@ -206,6 +206,7 @@ class FederatedClient(fl.client.NumPyClient):
                     print(f"Client {self.client_id} - Successfully encoded prototypes ({len(prototypes_bytes)} bytes)")
                     
                     return {
+                      "domain_id": str(self.traindata.dataset.domain_id),
                         "prototypes": prototypes_encoded,
                         "class_counts": class_counts_encoded,
                     }
@@ -217,10 +218,12 @@ class FederatedClient(fl.client.NumPyClient):
             
             # No prototypes available
             print(f"Client {self.client_id} - No prototypes available")
-            return {}
+            return {"domain_id": str(self.traindata.dataset.domain_id)}
         
         # Default response
-        return {"simulation_index": str(self.client_id)}
+        return {
+          "domain_id": str(self.traindata.dataset.domain_id),
+          "simulation_index": str(self.client_id)}
 
     def _extract_and_cache_prototypes(self, round_number):
         """Extract prototypes from trained model and cache them."""

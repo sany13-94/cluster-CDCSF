@@ -196,10 +196,11 @@ class AugmentationWrapper(Dataset):
     Apply augmentation transformations after domain shift.
     Used only for training data.
     """
-    def __init__(self, base_ds: Dataset,client_id, augmentation_transform: transforms.Compose):
+    def __init__(self, base_ds: Dataset,client_id,domain_id, augmentation_transform: transforms.Compose):
         self.base = base_ds
         self.augmentation = augmentation_transform
         self.client_id=client_id
+        self.domain_id=domain_id
 
     def __len__(self):
         return len(self.base)
@@ -302,7 +303,7 @@ def make_pathmnist_clients_with_domains(
         )
         
         # Apply augmentation (train only)
-        augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, client_id,augmentation_transform)
+        augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, client_id,domain_id,augmentation_transform)
         
         train_loaders.append(
             DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=False, 
@@ -328,7 +329,7 @@ def make_pathmnist_clients_with_domains(
       print(f"Client {client_id} | Signature: {signature}")
       client_signatures.append(signature)
    
-    augmented_trn_test_ds = AugmentationWrapper(trn_test_base, num_train_clients,augmentation_transform)
+    augmented_trn_test_ds = AugmentationWrapper(trn_test_base, num_train_clients,3,augmentation_transform)
    
     train_loaders.append(
         DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=False, 
