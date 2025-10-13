@@ -379,10 +379,10 @@ class FederatedClient(fl.client.NumPyClient):
 
 from hashlib import md5
 
-def get_client_signature(dataset_subset):
-    """Return a deterministic signature for a Subset based on its indices."""
-    indices_bytes = str(dataset_subset.indices).encode()
-    return md5(indices_bytes).hexdigest()
+def get_client_signature(dataset):
+    all_labels = [dataset[i][1].item() for i in range(len(dataset))]
+    return md5(str(all_labels).encode()).hexdigest()
+
 
 def gen_client_fn(
     num_clients: int,
