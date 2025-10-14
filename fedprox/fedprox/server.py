@@ -681,7 +681,7 @@ domains_ids=domains_ids
             true_domains = np.array(domains_ids)
             self.visualizer.plot_clustering_statistics(
         predicted_clusters=predicted,
-        true_domains=true_domains,
+        true_domain_labels=true_domains,
         client_ids=all_client_ids,
         server_round=server_round,
         save=True
