@@ -1,3 +1,4 @@
+from pickle import TRUE
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
@@ -35,7 +36,7 @@ class ClusterVisualizationForConfigureFit:
         self,
         all_prototypes_list: List[Dict],
         client_ids: List[str],
-          self.true_domain_labels = true_domain_labels,
+        true_domain_labels ,
         client_assignments: Dict[str, int],
         server_round: int,
         num_clusters: int,
@@ -100,13 +101,9 @@ class ClusterVisualizationForConfigureFit:
         print(f"  t-SNE completed.")
         
         # Step 4: Get true domain labels for these clients (if available)
-        true_domains = None
-        if self.true_domain_labels is not None:
-            # Convert client IDs to indices
-            true_domains = np.array([
-                self._get_true_domain_for_client(cid) 
-                for cid in client_ids
-            ])
+        true_domains = true_domain_labels
+        print(f"true domains of clients {true_domains}")
+       
         
         # Step 5: Create visualization
         if true_domains is not None:
@@ -182,12 +179,9 @@ class ClusterVisualizationForConfigureFit:
         
         # Stack into matrix
         return np.array(feature_vectors)
-    
+    """
     def _get_true_domain_for_client(self, client_id: str) -> int:
-        """
-        Extract true domain label for a client ID.
-        Assumes client_id format like 'client_0', 'client_1', etc.
-        """
+        
         try:
             # Extract numeric ID from client_id string
             client_idx = int(client_id.split('_')[-1])
@@ -196,7 +190,7 @@ class ClusterVisualizationForConfigureFit:
         except:
             pass
         return -1  # Unknown domain
-    
+    """
     def _create_three_panel_plot(
         self,
         embeddings,
