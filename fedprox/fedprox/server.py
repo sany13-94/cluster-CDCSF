@@ -689,7 +689,7 @@ save_dir="feature_visualizations_gpaf"
         client_ids=all_client_ids,
         server_round=server_round,
         save=True
-    )
+    )#
             # Also plot statistics
             predicted = np.array([self.client_assignments.get(cid, -1) for cid in all_client_ids])
             true_domains = np.array(domains_ids)
