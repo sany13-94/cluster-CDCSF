@@ -669,7 +669,7 @@ save_dir="feature_visualizations_gpaf"
             #visualize 
 
             # === ADD VISUALIZATION HERE ===
-            true_domains = domains_ids
+            true_domains = np.array(domains_ids)
           
             self.visualizer.visualize_clustering_from_prototypes(
             all_prototypes_list=all_prototypes_list,
