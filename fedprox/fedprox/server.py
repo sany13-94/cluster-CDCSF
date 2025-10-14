@@ -667,11 +667,12 @@ save_dir="feature_visualizations_gpaf"
             #visualize 
 
             # === ADD VISUALIZATION HERE ===
+            true_domains = np.array(domains_ids)
             self.visualizer.visualize_clustering_from_prototypes(
             all_prototypes_list=all_prototypes_list,
             client_ids=all_client_ids,
-domains_ids=domains_ids
-            ,
+ true_domain_labels=true_domains,
+            
             client_assignments=self.client_assignments,
               server_round=server_round,
               num_clusters=self.num_clusters,
@@ -681,7 +682,7 @@ domains_ids=domains_ids
             true_domains = np.array(domains_ids)
             self.visualizer.plot_clustering_statistics(
         predicted_clusters=predicted,
-        true_domain_labels=true_domains,
+        true_domains=true_domains,
         client_ids=all_client_ids,
         server_round=server_round,
         save=True
