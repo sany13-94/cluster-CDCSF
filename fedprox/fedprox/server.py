@@ -593,10 +593,11 @@ save_dir="feature_visualizations_gpaf"
         all_client_ids = []
         class_counts_list = []
         clients_with_prototypes = []
-        domains_ids={}
+        domains_ids=[]
         # Collect prototypes from ALL participated clients
         for cid in participated_available:
             client_proxy = all_clients[cid]
+            client_id=int(cid)
             
             try:
                 get_protos_res = client_proxy.get_properties(
@@ -607,8 +608,8 @@ save_dir="feature_visualizations_gpaf"
                 
                 prototypes_encoded = get_protos_res.properties.get("prototypes")
                 class_counts_encoded = get_protos_res.properties.get("class_counts")
-                domain_id =get_protos_res.properties.get("domain_id", None)
-                domains_ids[cid]=domain_id
+                domain_id =int(get_protos_res.properties.get("domain_id", None))
+                
                 print(f'==== clients domains {domains_ids}=====')
                 if prototypes_encoded and class_counts_encoded:
                     try:
@@ -618,6 +619,7 @@ save_dir="feature_visualizations_gpaf"
                         if isinstance(prototypes, dict) and isinstance(class_counts, dict):
                             all_prototypes_list.append(prototypes)
                             all_client_ids.append(cid)
+                            domains_ids.append(domain_id)
                             class_counts_list.append(class_counts)
                             clients_with_prototypes.append(cid)
                             print(f"  ✓ Client {cid}: Prototypes collected")
@@ -667,7 +669,8 @@ save_dir="feature_visualizations_gpaf"
             #visualize 
 
             # === ADD VISUALIZATION HERE ===
-            true_domains = np.array(domains_ids)
+            true_domains = domains_ids
+          
             self.visualizer.visualize_clustering_from_prototypes(
             all_prototypes_list=all_prototypes_list,
             client_ids=all_client_ids,
