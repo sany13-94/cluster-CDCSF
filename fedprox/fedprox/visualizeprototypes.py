@@ -369,7 +369,7 @@ class ClusterVisualizationForConfigureFit:
         ax.set_title(f"{title}\nAccuracy: {accuracy:.1%}", fontsize=13, fontweight='bold')
         ax.legend(loc='best', fontsize=10, framealpha=0.9)
         ax.grid(True, alpha=0.3)
-    
+    '''
     def _find_cluster_alignment(self, predicted, true):
         """Find best alignment between clusters and true domains"""
         from scipy.optimize import linear_sum_assignment
@@ -388,6 +388,54 @@ class ClusterVisualizationForConfigureFit:
         
         alignment = {int(row): int(col) for row, col in zip(row_ind, col_ind)}
         return alignment
+    '''
+    def _find_cluster_alignment(self, predicted, true):
+      """Find best alignment between clusters and true domains (robust version)."""
+      from scipy.optimize import linear_sum_assignment
+      import numpy as np
+
+      predicted = np.array(predicted)
+      true = np.array(true)
+
+      # Ensure non-negative valid labels
+      valid_mask = (predicted >= 0) & (true >= 0)
+      predicted = predicted[valid_mask]
+      true = true[valid_mask]
+
+      # Map cluster/domain labels to compact 0..N indices
+      unique_pred = np.unique(predicted)
+      unique_true = np.unique(true)
+
+      cluster_to_idx = {c: i for i, c in enumerate(unique_pred)}
+      domain_to_idx = {d: i for i, d in enumerate(unique_true)}
+
+      n_clusters = len(unique_pred)
+      n_domains = len(unique_true)
+
+      # Initialize confusion matrix safely
+      confusion = np.zeros((n_clusters, n_domains), dtype=int)
+
+      for pred, true_label in zip(predicted, true):
+        i = cluster_to_idx[pred]
+        j = domain_to_idx[true_label]
+        confusion[i, j] += 1
+
+      # Handle degenerate cases
+      if confusion.size == 0:
+        print("[WARN] Empty confusion matrix in _find_cluster_alignment.")
+        return {}
+
+      # Hungarian algorithm for optimal assignment
+      row_ind, col_ind = linear_sum_assignment(-confusion)
+
+      alignment = {int(unique_pred[row]): int(unique_true[col]) for row, col in zip(row_ind, col_ind)}
+
+      # Debug info
+      print(f"[DEBUG] Confusion matrix:\n{confusion}")
+      print(f"[DEBUG] Alignment mapping: {alignment}")
+
+      return alignment
+
     
     def plot_clustering_statistics(
         self,
