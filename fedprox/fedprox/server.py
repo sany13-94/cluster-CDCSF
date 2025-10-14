@@ -670,13 +670,15 @@ save_dir="feature_visualizations_gpaf"
             self.visualizer.visualize_clustering_from_prototypes(
             all_prototypes_list=all_prototypes_list,
             client_ids=all_client_ids,
+domains_ids=domains_ids
+            ,
             client_assignments=self.client_assignments,
               server_round=server_round,
               num_clusters=self.num_clusters,
                 save=True)
             # Also plot statistics
             predicted = np.array([self.client_assignments.get(cid, -1) for cid in all_client_ids])
-            true_domains = np.array([self.visualizer._get_true_domain_for_client(cid) for cid in all_client_ids])
+            true_domains = np.array(domains_ids)
             self.visualizer.plot_clustering_statistics(
         predicted_clusters=predicted,
         true_domains=true_domains,
@@ -686,7 +688,7 @@ save_dir="feature_visualizations_gpaf"
     )
             # Also plot statistics
             predicted = np.array([self.client_assignments.get(cid, -1) for cid in all_client_ids])
-            true_domains = np.array([self.visualizer._get_true_domain_for_client(cid) for cid in all_client_ids])
+            true_domains = np.array(domains_ids)
             self.visualizer.plot_clustering_statistics(
         predicted_clusters=predicted,
         true_domains=true_domains,
