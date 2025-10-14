@@ -584,7 +584,7 @@ save_dir="feature_visualizations_gpaf"
       # =================================================================
       clusters = defaultdict(list)
     
-      if server_round==2 and participated_available:
+      if server_round>=2 and participated_available:
         print(f"\n{'─'*80}")
         print(f"[Clustering Round] Collecting prototypes from ALL participated clients")
         print(f"{'─'*80}")
