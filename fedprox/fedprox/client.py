@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from flwr.common.typing import NDArrays, Scalar
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+from torchmetrics import Accuracy, Precision, Recall, F1Score
 from torch.utils.data import DataLoader
 import json
 from flwr.client import NumPyClient, Client,  NumPyClient
@@ -353,9 +354,30 @@ class FederatedClient(fl.client.NumPyClient):
         net.train()
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
-        
+
+        # Metrics (binary classification)
+        accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(device)
+        precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(device)
+        recall = Recall(task="multiclass", num_classes=num_classes, average='macro').to(device)
+        f1_score = F1Score(task="multiclass", num_classes=num_classes, average='macro').to(device)
+  
+        # ——— Prepare CSV logging ———
+        log_filename = f"client_cluster_train_{client_id}_loss_log.csv"
+        write_header = not os.path.exists(log_filename)
+        with open(log_filename, 'a', newline='') as csvfile:
+          writer = csv.writer(csvfile)
+          if write_header:
+            writer.writerow([
+                "epoch","train_loss",
+                "accuracy","precision","recall","f1"
+            ])
+     
         for epoch in range(epochs):
-            epoch_loss = 0.0
+            accuracy.reset()
+            precision.reset()
+            recall.reset()
+            f1_score.reset()
+            correct, total, epoch_loss ,loss_sumi ,loss_sum = 0, 0, 0.0 , 0 , 0
             for batch_idx, (images, labels) in enumerate(trainloader):
                 images = images.to(self.device)
                 labels = labels.to(self.device)
@@ -369,9 +391,29 @@ class FederatedClient(fl.client.NumPyClient):
                 loss.backward()
                 optimizer.step()
                 
-                epoch_loss += loss.item()
-            
-            print(f"Client {client_id} - Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/len(trainloader):.4f}")
+                epoch_loss += loss.item() * images.size(0)
+                preds = torch.argmax(outputs, dim=1)
+                accuracy.update(preds, labels)
+                precision.update(preds, labels)
+                recall.update(preds, labels)
+                f1_score.update(preds, labels) 
+                # Compute accuracy
+                _, predicted = torch.max(outputs.data, 1)
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
+
+            epoch_loss /= len(trainloader.dataset)
+            epoch_acc = correct / total
+            epoch_acc = accuracy.compute().item()
+            epoch_precision = precision.compute().item()
+            epoch_recall = recall.compute().item()
+            epoch_f1 = f1_score.compute().item()
+            print(f"local Epoch {epoch+1}: Loss = {epoch_loss:.4f}, Accuracy = {epoch_acc:.4f} (Client {client_id})")
+            print(f"Accuracy = {epoch_acc:.4f}, Precision = {epoch_precision:.4f}, Recall = {epoch_recall:.4f}, F1 = {epoch_f1:.4f} (Client {client_id})")    
+            with open(log_filename, 'a', newline='') as csvfile:
+              writer = csv.writer(csvfile)
+              writer.writerow([epoch+1, epoch_loss, epoch_acc])            
+              print(f"Client {client_id} - Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/len(trainloader):.4f}")
         
         # Simulate delay if needed
         if simulate_delay:
