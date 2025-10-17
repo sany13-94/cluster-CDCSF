@@ -704,7 +704,9 @@ class FlowerClient(NumPyClient):
       with torch.no_grad():
         for batch in testloader:
             images, labels = batch
-            labels=labels.squeeze(1)
+            #labels=labels.squeeze(1)
+            images = images.to(self.device)
+            labels = labels.to(self.device)
             
             #outputs = net(images)
             h, _, outputs =  net(images)
