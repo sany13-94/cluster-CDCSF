@@ -14,6 +14,7 @@ import torch.nn.functional as F
 from flwr.common.typing import NDArrays, Scalar
 from hydra.utils import instantiate
 from omegaconf import DictConfig
+import csv
 from torchmetrics import Accuracy, Precision, Recall, F1Score
 from torch.utils.data import DataLoader
 import json
@@ -354,12 +355,12 @@ class FederatedClient(fl.client.NumPyClient):
         net.train()
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
-
+        num_classes=9
         # Metrics (binary classification)
-        accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(device)
-        precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(device)
-        recall = Recall(task="multiclass", num_classes=num_classes, average='macro').to(device)
-        f1_score = F1Score(task="multiclass", num_classes=num_classes, average='macro').to(device)
+        accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(self.device)
+        precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
+        recall = Recall(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
+        f1_score = F1Score(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
   
         # ——— Prepare CSV logging ———
         log_filename = f"client_cluster_train_{client_id}_loss_log.csv"
@@ -416,10 +417,12 @@ class FederatedClient(fl.client.NumPyClient):
               print(f"Client {client_id} - Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/len(trainloader):.4f}")
         
         # Simulate delay if needed
+        """
         if simulate_delay:
             import random
             delay = random.uniform(0.5, 2.0)
             time.sleep(delay)
+        """
 
 
 from hashlib import md5
