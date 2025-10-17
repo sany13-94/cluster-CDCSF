@@ -696,10 +696,11 @@ class FlowerClient(NumPyClient):
       num_classes=2
       net.eval()
       # Initialize metrics
-      accuracy = Accuracy(task="binary", num_classes=num_classes)
-      precision = Precision(task="binary", num_classes=num_classes, average='macro')
-      recall = Recall(task="binary", num_classes=num_classes, average='macro')
-      f1_score = F1Score(task="binary", num_classes=num_classes, average='macro')
+      accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(self.device)
+      precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
+      recall = Recall(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
+      f1_score = F1Score(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
+  
       print(f' ==== client test func')
       with torch.no_grad():
         for batch in testloader:
