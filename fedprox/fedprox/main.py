@@ -371,7 +371,7 @@ def main(cfg: DictConfig) -> None:
         num_rounds=cfg.num_rounds,
         learning_rate=cfg.learning_rate,
         experiment_name=experiment_name,strategy=strategy,
-        device=device
+   
        )
 
     client = ClientApp(client_fn=client_fn)
