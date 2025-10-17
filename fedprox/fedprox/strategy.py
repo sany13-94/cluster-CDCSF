@@ -100,14 +100,7 @@ save_dir="feature_visualizations"
             accuracies[f"client_{client_id}"] = accuracy
             metrics = eval_res.metrics
             # Get features and labels if available
-            if "features" in metrics and "labels" in metrics:
-              
-              features_np = pickle.loads(base64.b64decode(metrics.get("features").encode('utf-8')))
-              labels_np = pickle.loads(base64.b64decode(metrics.get("labels").encode('utf-8')))
-              self.current_features[client_id] = features_np
-              self.current_labels[client_id] = labels_np
-            
-            
+           
         # Calculate average accuracy
         avg_accuracy = sum(accuracies.values()) / len(accuracies)
         # Only visualize if we have all the data and accuracy improved

@@ -616,25 +616,10 @@ class FlowerClient(NumPyClient):
             }, step=config.get("server_round"))
             # Also log in format for easier plotting
           print(f'client id : {self.client_id} and valid accuracy is {accuracy} and valid loss is : {loss}')
-          # Extract features and labels
-          val_features, val_labels = extract_features_and_labels(
-          self.net,
-         self.valloader,
-          self.device
-           )
-          #visualize all clients features per class
-          features_np = val_features.detach().cpu().numpy()
-          labels_np = val_labels.detach().cpu().numpy().reshape(-1)  # Ensure 1D array
-          # In client:
-          features_serialized = base64.b64encode(pickle.dumps(features_np)).decode('utf-8')
-          labels_serialized = base64.b64encode(pickle.dumps(labels_np)).decode('utf-8')
-          #print(f"Client {self.client_id} sending features shape: {features_np.shape}")
-          #print(f"Client {self.client_id} sending labels shape: {labels_np.shape}")
-         
+        
           #print(f'client id : {self.client_id} and valid accuracy is {accuracy} and valid loss is : {loss}')
           return float(loss), len(self.valloader), {"accuracy": float(accuracy),
-         "features": features_serialized,
-            "labels": labels_serialized,
+    
           }
     
     def train(self,net, trainloader, client_id,epochs: int, verbose=False):
