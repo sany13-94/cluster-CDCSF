@@ -346,7 +346,7 @@ def main(cfg: DictConfig) -> None:
     "num_gpus": 2.0 # Alloue une unité GPU à l'acteur Ray
 } 
 
-    if strategy=="gpaf":
+    if strategy=="fedavg":
       # à chaque client Ray dans la simulation.
      
       #print(f'2: {valloaders[0]}')
@@ -361,18 +361,7 @@ def main(cfg: DictConfig) -> None:
         strategy=strategy,
         domain_assignment=domain_assignment
        )
-    else:
-      # Create the ClientApp
-      client_fn = gen_client_fn(
-        num_clients=cfg.num_clients,
-        num_epochs=cfg.num_epochs,
-        trainloaders=trainloaders,
-        valloaders=valloaders,
-        num_rounds=cfg.num_rounds,
-        learning_rate=cfg.learning_rate,
-        experiment_name=experiment_name,strategy=strategy,
-   
-       )
+    
 
     client = ClientApp(client_fn=client_fn)
     
