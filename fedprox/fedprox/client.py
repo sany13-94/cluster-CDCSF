@@ -711,11 +711,7 @@ class FlowerClient(NumPyClient):
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-            accuracy.update(predicted, labels)
-            precision.update(predicted, labels)
-            recall.update(predicted, labels)
-            f1_score.update(predicted, labels)
-            
+           
      
       loss /= len(testloader.dataset)
       accuracy = correct / total
