@@ -487,10 +487,8 @@ cfg=None  ,
           
           #img_shape=(28,28)
           #model = ModelCDCSF(latent_dim).to(device)
-          
 
           trainloader = trainloaders[int(cid)]
-
 
           images, labels = next(iter(trainloader))
           print(f"Saved sample image for client {cid} (label={images[0]})")
@@ -661,6 +659,8 @@ class FlowerClient(NumPyClient):
         for batch in trainloader:
 
             images, labels = batch
+            images = images.to(self.device)
+            labels = labels.to(self.device)
             labels=labels.long()
             #print(f'labels shape hh {labels.shape}')
             
