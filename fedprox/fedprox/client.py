@@ -352,10 +352,12 @@ class FederatedClient(fl.client.NumPyClient):
     def train(self, net, trainloader, client_id, epochs, simulate_delay=False):
         """Train the network on the training set."""
 
-        net.train()
+        
         criterion = torch.nn.CrossEntropyLoss()
         optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
         num_classes=9
+        net.to(self.device)
+        net.train()
         # Metrics (binary classification)
         accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(self.device)
         precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
