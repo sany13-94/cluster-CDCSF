@@ -696,11 +696,7 @@ class FlowerClient(NumPyClient):
       num_classes=2
       net.eval()
       # Initialize metrics
-      accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(self.device)
-      precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
-      recall = Recall(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
-      f1_score = F1Score(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
-  
+     
       print(f' ==== client test func')
       with torch.no_grad():
         for batch in testloader:
@@ -720,12 +716,10 @@ class FlowerClient(NumPyClient):
             recall.update(predicted, labels)
             f1_score.update(predicted, labels)
             
-      print(f"Test Accuracy: {accuracy.compute():.4f}")
-      print(f"Test Precision: {precision.compute():.4f}")
-      print(f"Test Recall: {recall.compute():.4f}")
-      print(f"Test F1 Score: {f1_score.compute():.4f}")
+     
       loss /= len(testloader.dataset)
       accuracy = correct / total
+      print(f"Test Accuracy: {accuracy:.4f}")
       return loss, accuracy   
 
 #monn client side
