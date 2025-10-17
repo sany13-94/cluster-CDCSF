@@ -548,7 +548,8 @@ save_dir="feature_visualizations"
           valloader = valloaders[int(cid)]
           numpy_client = FlowerClient(
             model, trainloader, valloader,num_epochs,
-           cid,run_id,mlflow)
+           cid,run_id,mlflow
+           )
 
         return numpy_client.to_client()
       
@@ -577,7 +578,7 @@ class FlowerClient(NumPyClient):
         self.mlflow=mlflow
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
+      
     #update the local model with parameters received from the server
     def set_parameters(self,net, parameters: List[np.ndarray]):
       params_dict = zip(net.state_dict().keys(), parameters)
@@ -591,7 +592,7 @@ class FlowerClient(NumPyClient):
 
     #get parameters from server train with local data end return the updated local parameter to the server
     def fit(self, parameters, config):
-
+        print(f'we train in {self.device}')
         self.set_parameters(self.net, parameters)
         self.train(self.net, self.trainloader,self.client_id,epochs=self.local_epochs)
         # Log the model after training
@@ -643,7 +644,18 @@ class FlowerClient(NumPyClient):
       criterion = torch.nn.CrossEntropyLoss()
       lr=0.00013914064388085564
       optimizer = torch.optim.Adam(net.parameters(),lr=lr,weight_decay=1e-4)
+      net.to(self.device)
       net.train()
+      # ——— Prepare CSV logging ———
+      log_filename = f"client_fedavgmod_train_{client_id}_loss_log.csv"
+      write_header = not os.path.exists(log_filename)
+      with open(log_filename, 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        if write_header:
+            writer.writerow([
+                "epoch","train_loss",
+                "accuracy"
+            ])
       for epoch in range(epochs):
         correct, total, epoch_loss = 0, 0, 0.0
         for batch in trainloader:
@@ -673,7 +685,9 @@ class FlowerClient(NumPyClient):
         epoch_acc = correct / total
         #save_client_model_moon(client_id, net)
         print(f"Epoch {epoch+1}: train loss {epoch_loss}, accuracy {epoch_acc} of client : {client_id}")
-
+        with open(log_filename, 'a', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow([epoch+1, epoch_loss, epoch_acc])
 
     def test(self,net, testloader):
       """Evaluate the network on the entire test set."""

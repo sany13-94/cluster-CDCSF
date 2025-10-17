@@ -39,7 +39,7 @@ import torch
 import numpy as np
 from typing import List
 from torch.utils.data import DataLoader
-strategy="gpaf"
+strategy="fedavg"
  # Create or get experiment
 experiment_name = "fedgpaf_Fed_FL32"
 experiment = mlflow.get_experiment_by_name(experiment_name)
@@ -361,6 +361,21 @@ def main(cfg: DictConfig) -> None:
         strategy=strategy,
         domain_assignment=domain_assignment
        )
+    else:
+      # Create the ClientApp
+      client_fn = gen_client_fn(
+        num_clients=cfg.num_clients,
+        num_epochs=cfg.num_epochs,
+        trainloaders=trainloaders,
+        valloaders=valloaders,
+        num_rounds=cfg.num_rounds,
+        learning_rate=cfg.learning_rate,
+        experiment_name=experiment_name,strategy=strategy,
+        device=device
+       )
+
+    client = ClientApp(client_fn=client_fn)
+    
       
     
     client = ClientApp(client_fn=client_fn)

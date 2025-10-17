@@ -11,6 +11,8 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
+import csv
+import os
 import base64
 import pickle
 from flwr.server.client_manager import ClientManager
@@ -112,13 +114,14 @@ save_dir="feature_visualizations"
         if avg_accuracy > self.best_avg_accuracy:
           print(f'==visualization===')
           self.best_avg_accuracy = avg_accuracy
-          self.feature_visualizer.visualize_all_clients_by_class(
-            features_dict=self.current_features,
-            labels_dict=self.current_labels,
-            accuracies=accuracies,
-            epoch=server_round,
-            stage="validation"
-          )
+        # Only visualize if we have all the data and accuracy improved
+        log_filename = "fedavg_server_accuracy_log.csv"
+        write_header = not os.path.exists(log_filename)
+        with open(log_filename, 'a', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                if write_header:
+                    writer.writerow(["round", "avg_accuracy"])
+                writer.writerow([server_round, avg_accuracy])
         return avg_accuracy, {"accuracy": avg_accuracy}
 
 
