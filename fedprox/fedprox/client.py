@@ -486,7 +486,7 @@ cfg=None  ,
         model = ModelCDCSF(out_dim=256, n_classes=9).to(device)
 
                
-        if strategy=="gpaf":
+        if strategy=="fedavg":
           
           #img_shape=(28,28)
           #model = ModelCDCSF(latent_dim).to(device)
