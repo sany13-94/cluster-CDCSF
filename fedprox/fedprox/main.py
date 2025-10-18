@@ -15,7 +15,7 @@ from flwr.server.strategy import FedAvg
 from flwr.simulation import run_simulation
 from fedprox import client, server, utils
 from fedprox.client import gen_client_fn , FlowerClient
-from fedprox.dataset import load_datasets
+from fedprox.dataset1 import load_datasets
 from fedprox.utils import LabelDistributionVisualizer,visualize_class_domain_shift
 import mlflow
 from  mlflow.tracking import MlflowClient
