@@ -32,7 +32,7 @@ import torch.nn as nn
 import torch
 
 Tensor = torch.FloatTensor
-'''    
+   
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(
@@ -354,7 +354,8 @@ class ModelCDCSF(nn.Module):
         x = self.l2(x)
 
         y = self.l3(x)
-        return h, x, y
+        return h, x,y
+'''
 import torch
 import os
 
@@ -380,6 +381,8 @@ classifier,discriminator , trainloader, device,client_id,
 ,
             decoder,batch_size
         )
+
+
 import csv
 #we must add a classifier that classifier into a binary categories
 #send back the classifier parameter to the server
