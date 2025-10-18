@@ -169,7 +169,7 @@ class FederatedClient(fl.client.NumPyClient):
                 "duration": training_duration,
             })
             """
-            return self.get_parameters(self.net), len(self.trainloader), {}
+            return self.get_parameters(self.net), len(self.traindata), {}
 
            
         except Exception as e:
