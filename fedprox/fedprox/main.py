@@ -365,9 +365,7 @@ def main(cfg: DictConfig) -> None:
 
     client = ClientApp(client_fn=client_fn)
     
-      
     
-    client = ClientApp(client_fn=client_fn)
     device = cfg.server_device
     def get_on_fit_config():
         def fit_config_fn(server_round: int):

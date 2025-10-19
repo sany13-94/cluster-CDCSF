@@ -108,7 +108,7 @@ save_dir="feature_visualizations"
           print(f'==visualization===')
           self.best_avg_accuracy = avg_accuracy
         # Only visualize if we have all the data and accuracy improved
-        log_filename = "fedavg_server_accuracy_log1.csv"
+        log_filename = "fedavg_server_accuracy_log2.csv"
         write_header = not os.path.exists(log_filename)
         with open(log_filename, 'a', newline='') as csvfile:
                 writer = csv.writer(csvfile)
