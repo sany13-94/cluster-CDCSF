@@ -718,6 +718,8 @@ save_dir="feature_visualizations_gpaf"
       in_warmup_phase = server_round <= self.warmup_rounds
       clustering_round = (server_round > self.warmup_rounds and 
                        server_round % self.clustering_interval == 0)
+
+      
     
       if in_warmup_phase:
         print(f"\n[STAGE 1: WARMUP PHASE] Round {server_round}/{self.warmup_rounds}")
@@ -731,7 +733,7 @@ save_dir="feature_visualizations_gpaf"
       # =================================================================
       clusters = defaultdict(list)
     
-      if server_round >=5 and participated_available:
+      if server_round% 5==0 and participated_available and in_warmup_phase==False:
         print(f"\n{'─'*80}")
         print(f"[Clustering Round] Collecting prototypes from ALL participated clients")
         print(f"{'─'*80}")
