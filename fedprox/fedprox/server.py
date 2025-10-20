@@ -537,47 +537,7 @@ save_dir="feature_visualizations_gpaf"
         return selected
     
       
-         def configure_fit(self, server_round, parameters, client_manager):
-    """Your existing configure_fit with visualization integrated."""
-    
-    # ... your existing clustering logic ...
-    
-    # After clustering (after E-step and M-step):
-    if clustering_round and server_round > self.warmup_rounds:
-        # Collect prototypes (your existing code)
-        all_prototypes_list = []
-        all_client_ids = []
-        
-        for cid in participated_available:
-            client_proxy = all_clients[cid]
-            try:
-                get_protos_res = client_proxy.get_properties(
-                    ins=GetPropertiesIns(config={"request": "prototypes"}),
-                    timeout=15.0,
-                    group_id=None
-                )
-                
-                prototypes_encoded = get_protos_res.properties.get("prototypes")
-                if prototypes_encoded:
-                    prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
-                    all_prototypes_list.append(prototypes)
-                    all_client_ids.append(cid)
-            except Exception as e:
-                print(f"Failed to get prototypes from {cid}: {e}")
-        
-        # ✅ NEW: Visualize clustering
-        if len(all_prototypes_list) >= self.num_clusters:
-            self._visualize_clusters(
-                prototypes=all_prototypes_list,
-                client_ids=all_client_ids,
-                server_round=server_round,
-                true_domain_map=self.domain_tracker  # Pass your domain map
-            )
-    
-    # ... rest of your configure_fit ...
-    
-    return instructions
-
+  
 
     def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
       """
