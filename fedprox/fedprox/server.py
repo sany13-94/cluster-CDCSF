@@ -15,6 +15,12 @@ import torch
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from matplotlib import cm
 import random
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from matplotlib.colors import ListedColormap
+from sklearn.manifold import TSNE
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
+    
 from flwr.common import GetPropertiesIns
 import json
 from sklearn.manifold import TSNE
@@ -531,7 +537,188 @@ save_dir="feature_visualizations_gpaf"
         return selected
     
       
+         def configure_fit(self, server_round, parameters, client_manager):
+    """Your existing configure_fit with visualization integrated."""
+    
+    # ... your existing clustering logic ...
+    
+    # After clustering (after E-step and M-step):
+    if clustering_round and server_round > self.warmup_rounds:
+        # Collect prototypes (your existing code)
+        all_prototypes_list = []
+        all_client_ids = []
+        
+        for cid in participated_available:
+            client_proxy = all_clients[cid]
+            try:
+                get_protos_res = client_proxy.get_properties(
+                    ins=GetPropertiesIns(config={"request": "prototypes"}),
+                    timeout=15.0,
+                    group_id=None
+                )
+                
+                prototypes_encoded = get_protos_res.properties.get("prototypes")
+                if prototypes_encoded:
+                    prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
+                    all_prototypes_list.append(prototypes)
+                    all_client_ids.append(cid)
+            except Exception as e:
+                print(f"Failed to get prototypes from {cid}: {e}")
+        
+        # ✅ NEW: Visualize clustering
+        if len(all_prototypes_list) >= self.num_clusters:
+            self._visualize_clusters(
+                prototypes=all_prototypes_list,
+                client_ids=all_client_ids,
+                server_round=server_round,
+                true_domain_map=self.domain_tracker  # Pass your domain map
+            )
+    
+    # ... rest of your configure_fit ...
+    
+    return instructions
+
+
+    def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
+      """
+      Visualize clusters with t-SNE projection.
+    
+      Colors = Predicted clusters (EM)
+      Shapes = True domains (ground truth)
+      """
    
+      # 1. Flatten prototypes: one vector per client
+      prototype_matrix = []
+      for client_prototypes in prototypes:
+        client_proto = np.mean(list(client_prototypes.values()), axis=0)
+        prototype_matrix.append(client_proto)
+      prototype_matrix = np.array(prototype_matrix)
+    
+      # 2. t-SNE projection
+      n_clients = len(prototype_matrix)
+      perplexity = min(30, max(1, n_clients - 1))
+      tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42)
+      projections = tsne.fit_transform(prototype_matrix)
+    
+      # 3. Cluster assignments (predicted by your method)
+      cluster_assignments = [self.client_assignments.get(cid, -1) for cid in client_ids]
+      unique_clusters = sorted(set(cluster_assignments))
+      num_clusters = len(unique_clusters)
+    
+      # 4. Color map setup for clusters
+      base_cmap = cm.get_cmap("tab20", num_clusters)
+      colors = [base_cmap(i) for i in range(num_clusters)]
+      color_map = ListedColormap(colors)
+      cluster_id_to_color_index = {cluster_id: idx for idx, cluster_id in enumerate(unique_clusters)}
+      color_indices = [cluster_id_to_color_index[cid] for cid in cluster_assignments]
+    
+      # 5. Marker setup for true domains
+      markers = ['o', 's', '^', 'D', 'P', 'X']
+      domain_to_marker = {}
+      true_domain_labels = None
+    
+      if true_domain_map:
+        # Convert true_domain_map to labels for metrics
+        true_domain_labels = []
+        unique_domains = set()
+        
+        for cid in client_ids:
+            if isinstance(true_domain_map, dict):
+                # Domain tracker dict
+                domain = true_domain_map.get(cid, "unknown")
+            else:
+                # Array or other
+                domain = true_domain_map.get_domain(cid) if hasattr(true_domain_map, 'get_domain') else 0
+            
+            true_domain_labels.append(domain)
+            unique_domains.add(domain)
+        
+        unique_domains = sorted(unique_domains)
+        domain_to_marker = {dom: markers[i % len(markers)] for i, dom in enumerate(unique_domains)}
+    
+      # 6. Begin plotting
+      plt.figure(figsize=(14, 10))
+    
+      for i, (x, y) in enumerate(projections):
+        client_id = client_ids[i]
+        cluster_id = cluster_assignments[i]
+        color_index = cluster_id_to_color_index[cluster_id]
+        
+        if true_domain_map and true_domain_labels:
+            domain = true_domain_labels[i]
+            marker = domain_to_marker.get(domain, 'o')
+        else:
+            domain = "unknown"
+            marker = 'o'
+        
+        plt.scatter(
+            x, y,
+            c=[colors[color_index]],
+            marker=marker,
+            edgecolor='k',
+            linewidth=1.5,
+            s=150,
+            alpha=0.8
+        )
+        
+        # Add client ID label
+        plt.text(x, y+2, str(client_id)[:8], fontsize=8, ha='center', va='bottom')
+    
+      # 7. Legends
+      cluster_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', label=f'Cluster {cid}',
+                   markerfacecolor=colors[idx], markersize=10, markeredgecolor='k')
+        for cid, idx in sorted(cluster_id_to_color_index.items())
+    ]
+    
+      domain_handles = []
+      if true_domain_map and true_domain_labels:
+        for dom, marker in sorted(domain_to_marker.items()):
+            domain_handles.append(
+                plt.Line2D([0], [0], marker=marker, color='k', label=f'Domain: {dom}',
+                           markerfacecolor='gray', markersize=10, linestyle='None', markeredgecolor='k')
+            )
+    
+      plt.legend(
+        handles=cluster_handles + domain_handles,
+        title="Clusters (Color) / Domains (Shape)",
+        bbox_to_anchor=(1.05, 1),
+        loc='upper left',
+        fontsize=10
+    )
+    
+      # 8. Plot aesthetics
+      plt.title(
+        f"Client Prototypes Clustering - Round {server_round}\n"
+        f"Colors=Predicted Clusters, Shapes=True Domains",
+        fontsize=14,
+        fontweight='bold'
+    )
+      plt.xlabel("t-SNE Dimension 1", fontsize=12)
+      plt.ylabel("t-SNE Dimension 2", fontsize=12)
+      plt.grid(True, alpha=0.3)
+      plt.tight_layout()
+    
+      # Save figure
+      output_dir = Path("clustering_visualizations")
+      output_dir.mkdir(exist_ok=True)
+      plt.savefig(output_dir / f"clusters_round_{server_round}.png", dpi=300, bbox_inches='tight')
+      print(f"[Visualization] Saved: clustering_visualizations/clusters_round_{server_round}.png")
+    
+      plt.close()
+    
+      # 9. Clustering quality metrics
+      if true_domain_map and true_domain_labels:
+        try:
+            ari = adjusted_rand_score(true_domain_labels, cluster_assignments)
+            nmi = normalized_mutual_info_score(true_domain_labels, cluster_assignments)
+            
+            print(f"\n[Round {server_round}] Clustering Quality Metrics:")
+            print(f"  Adjusted Rand Index (ARI): {ari:.4f}")
+            print(f"  Normalized Mutual Info (NMI): {nmi:.4f}")
+            
+        except Exception as e:
+            print(f"Error computing metrics: {e}")
     def configure_fit(
     self, 
     server_round: int, 
