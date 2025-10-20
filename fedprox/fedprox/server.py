@@ -820,7 +820,7 @@ save_dir="feature_visualizations_gpaf"
                 print(f"  ⚠ Client {cid}: Communication failed - {e}")
 
         print(f"\n[Prototype Collection] {len(clients_with_prototypes)}/{len(participated_available)} successful")
-
+      
         # Perform EM clustering if enough clients
         if len(clients_with_prototypes) >= self.num_clusters:
             print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
@@ -856,6 +856,16 @@ save_dir="feature_visualizations_gpaf"
             #visualize 
 
             # === ADD VISUALIZATION HERE ===
+
+            # ✅ NEW: Visualize clustering
+            if len(all_prototypes_list) >= self.num_clusters:
+              self._visualize_clusters(
+                prototypes=all_prototypes_list,
+                client_ids=all_client_ids,
+                server_round=server_round,
+                true_domain_map=None  # Pass your domain map
+            )
+
             true_domains = np.array(domains_ids)
           
             self.visualizer.visualize_clustering_from_prototypes(
