@@ -686,7 +686,7 @@ save_dir="feature_visualizations_gpaf"
         loc='upper left',
         fontsize=10
     )
-    
+      ###
       # 8. Plot aesthetics
       plt.title(
         f"Client Prototypes Clustering - Round {server_round}\n"
