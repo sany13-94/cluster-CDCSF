@@ -346,11 +346,11 @@ def main(cfg: DictConfig) -> None:
     "num_gpus": 2.0 # Alloue une unité GPU à l'acteur Ray
 } 
 
-    if strategy=="fedavg":
-      # à chaque client Ray dans la simulation.
+   
+    # à chaque client Ray dans la simulation.
      
-      #print(f'2: {valloaders[0]}')
-      client_fn = gen_client_fn(
+    #print(f'2: {valloaders[0]}')
+    client_fn = gen_client_fn(
         num_clients=cfg.num_clients,
         num_epochs=cfg.num_epochs,
         trainloaders=trainloaders,
