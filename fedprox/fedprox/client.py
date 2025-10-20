@@ -151,7 +151,7 @@ class FederatedClient(fl.client.NumPyClient):
             print(f"Client {self.client_id} starting training...")
             self.train(self.net, self.traindata, self.client_id, epochs=self.local_epochs, simulate_delay=simulate_delay)
             print(f"Client {self.client_id} completed training")
-            """
+           
             # Extract and cache prototypes after training
             print(f"Client {self.client_id} extracting prototypes...")
             self._extract_and_cache_prototypes(round_number)
@@ -168,8 +168,8 @@ class FederatedClient(fl.client.NumPyClient):
                 "data_size": num_examples,
                 "duration": training_duration,
             })
-            """
-            return self.get_parameters(self.net), len(self.traindata), {}
+          
+            #return self.get_parameters(self.net), len(self.traindata), {}
 
            
         except Exception as e:

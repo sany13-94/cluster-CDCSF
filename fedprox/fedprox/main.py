@@ -39,7 +39,7 @@ import torch
 import numpy as np
 from typing import List
 from torch.utils.data import DataLoader
-strategy="fedavg"
+strategy="gpaf"
  # Create or get experiment
 experiment_name = "fedgpaf_Fed_FL32"
 experiment = mlflow.get_experiment_by_name(experiment_name)
