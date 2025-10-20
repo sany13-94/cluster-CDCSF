@@ -353,7 +353,7 @@ save_dir="feature_visualizations_gpaf"
             if aggregated_accuracy > self.best_avg_accuracy:
                 self.best_avg_accuracy = aggregated_accuracy
             
-            log_filename = "server_accuracy_log.csv"
+            log_filename = "server_accuracy_log1.csv"
             write_header = not os.path.exists(log_filename)
             with open(log_filename, 'a', newline='') as csvfile:
                 writer = csv.writer(csvfile)
