@@ -503,6 +503,7 @@ cfg=None  ,
             device
 
           )
+      return numpy_client.to_client()
 
        
        
