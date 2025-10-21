@@ -211,7 +211,7 @@ class FederatedClient(fl.client.NumPyClient):
                     print(f"Client {self.client_id} - Successfully encoded prototypes ({len(prototypes_bytes)} bytes)")
                     
                     return {
-                      "domain_id": str(self.traindata.dataset.domain_id),
+                      #"domain_id": str(self.traindata.dataset.domain_id),
                         "prototypes": prototypes_encoded,
                         "class_counts": class_counts_encoded,
                     }

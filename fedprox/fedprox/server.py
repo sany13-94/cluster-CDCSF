@@ -542,7 +542,6 @@ save_dir="feature_visualizations_gpaf"
     def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
       """
       Visualize clusters with t-SNE projection.
-    
       Colors = Predicted clusters (EM)
       Shapes = True domains (ground truth)
       """
