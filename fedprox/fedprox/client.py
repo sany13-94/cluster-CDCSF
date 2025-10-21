@@ -51,7 +51,6 @@ class FederatedClient(fl.client.NumPyClient):
      client_id,
       mlflow,
       run_id,
-      feature_visualizer,
       
             device):
         self.net = net
@@ -74,7 +73,6 @@ class FederatedClient(fl.client.NumPyClient):
         # Initialize optimizers
         self.optimizer= torch.optim.Adam(self.net.parameters())
         self.run_id=run_id
-        self.feature_visualizer=feature_visualizer
         # Initialize dictionaries to store features and labels
         self.client_features = {}  # Add this
         self.client_labels = {}    # Add this
