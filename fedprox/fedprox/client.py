@@ -159,7 +159,7 @@ class FederatedClient(fl.client.NumPyClient):
             training_duration = time.time() - start_time
             
             # Get updated parameters
-            #updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
+            updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
             
             # Return parameters and metrics (NumPyClient format)
             num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)

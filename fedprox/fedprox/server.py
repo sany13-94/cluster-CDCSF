@@ -87,10 +87,10 @@ class GPAFStrategy(FedAvg):
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
 
         #clusters parameters
-        self.warmup_rounds = 5  # Stage 1 duration
+        self.warmup_rounds = 8  # Stage 1 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
-        self.clustering_interval = 5
+        self.clustering_interval = 8
         
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
@@ -353,7 +353,7 @@ save_dir="feature_visualizations_gpaf"
             if aggregated_accuracy > self.best_avg_accuracy:
                 self.best_avg_accuracy = aggregated_accuracy
             
-            log_filename = "server_accuracy_log1.csv"
+            log_filename = "server_accuracy_log2.csv"
             write_header = not os.path.exists(log_filename)
             with open(log_filename, 'a', newline='') as csvfile:
                 writer = csv.writer(csvfile)
@@ -733,10 +733,10 @@ save_dir="feature_visualizations_gpaf"
       # =================================================================
       clusters = defaultdict(list)
     
-      if server_round% 5==0 and participated_available and in_warmup_phase==False:
+      if server_round% 2!=0 and participated_available and in_warmup_phase==False:
         print(f"\n{'─'*80}")
-        print(f"[Clustering Round] Collecting prototypes from ALL participated clients")
-        print(f"{'─'*80}")
+        print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
+       
         
         all_prototypes_list = []
         all_client_ids = []
