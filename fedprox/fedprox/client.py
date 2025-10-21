@@ -159,7 +159,7 @@ class FederatedClient(fl.client.NumPyClient):
             training_duration = time.time() - start_time
             
             # Get updated parameters
-            updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
+            #updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
             
             # Return parameters and metrics (NumPyClient format)
             num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
@@ -485,34 +485,15 @@ cfg=None  ,
         #the same model for all methods
         model = ModelCDCSF(out_dim=256, n_classes=9).to(device)
 
-               
-        if strategy=="fedavg":
-          
-          #img_shape=(28,28)
-          #model = ModelCDCSF(latent_dim).to(device)
+        trainloader = trainloaders[int(cid)]
 
-          trainloader = trainloaders[int(cid)]
-
-          images, labels = next(iter(trainloader))
-          print(f"Saved sample image for client {cid} (label={images[0]})")
-          # Extract the raw dataset underlying this DataLoader
-          # Access the original client_id stored in the dataset
-          dataset_client_id = trainloader.dataset.client_id
-          print(f"[Client {cid}] dataset_client_id = {dataset_client_id}")
-
-          print(f"====doain_assignment: {domain_assignment}====")
-          # Initialize the feature visualizer for all clients
-          feature_visualizer = StructuredFeatureVisualizer(
-        num_clients=num_clients,  # total number of clients
-num_classes=num_classes,
-save_dir="feature_visualizations"
-          )
-          
-          valloader = valloaders[int(cid)]
-          for batch_idx, (data, target) in enumerate(valloader):
-            print(f"Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")
-            break  # Just check the first batch
-          numpy_client =  FederatedClient(
+        images, labels = next(iter(trainloader))
+        print(f"Saved sample image for client {cid} (label={images[0]})")
+        # Access the original client_id stored in the dataset
+        dataset_client_id = trainloader.dataset.client_id
+        print(f"[Client {cid}] dataset_client_id = {dataset_client_id}")
+        valloader = valloaders[int(cid)]  
+        numpy_client =  FederatedClient(
            model,
             trainloader,
             valloader,
@@ -521,38 +502,12 @@ save_dir="feature_visualizations"
             mlflow
             ,
             run_id,
-            feature_visualizer,
             device
 
           )
 
-         
-        elif strategy =="moon":
-          
-          trainloader = trainloaders[int(cid)]
-          testloader = valloaders[int(cid)]
-          return MOONFlowerClient(
-            int(cid),
-            cfg.output_dim,
-            trainloader,
-            testloader,
-            device,
-            num_epochs,        
-            cfg.mu,
-            cfg.temperature,
-                
-          )
-
-        else:
-          # Load model
-          trainloader = trainloaders[int(cid)]
-          valloader = valloaders[int(cid)]
-          numpy_client = FlowerClient(
-            model, trainloader, valloader,num_epochs,
-           cid,run_id,mlflow
-           )
-
-        return numpy_client.to_client()
+       
+       
       
     return client_fn
 
