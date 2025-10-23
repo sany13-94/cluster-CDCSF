@@ -184,10 +184,11 @@ class ModelCDCSF(nn.Module):
         num_ftrs = basemodel.fc.in_features  # Should be 256 for ResNet18
 
         self.projection = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128)
-        )
+    nn.Linear(num_ftrs, 256),  # dynamically matches feature size
+    nn.ReLU(),
+    nn.Linear(256, 128)
+)
+
 
         # Classification head (directly from features to classes)
         self.fc = nn.Linear(num_ftrs, n_classes)
