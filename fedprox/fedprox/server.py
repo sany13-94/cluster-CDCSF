@@ -1076,6 +1076,155 @@ save_dir="feature_visualizations_gpaf"
 
 
   # Helper methods (add to your strategy class)
+    
+    # ============================================================================
+    # SIMPLIFIED CONFIGURE_FIT: NO EM, NO WARMUP
+    # ============================================================================
+    '''
+    def configure_fit_scoring_only(
+    self, 
+    server_round: int, 
+    parameters: Parameters, 
+    client_manager: ClientManager
+) -> List[Tuple[ClientProxy, FitIns]]:
+      """
+      Pure scoring-based selection (NO EM, NO warmup).
+   
+      """
+    
+      print(f"\n{'='*80}")
+      print(f"[Round {server_round}] ABLATION: SCORING-BASED SELECTION ONLY")
+      print(f"{'='*80}")
+    
+      # ================================================================
+      # PHASE 1: GET AVAILABLE CLIENTS
+      # ================================================================
+      all_clients = client_manager.all()
+      available_client_cids = list(all_clients.keys())
+
+      if not available_client_cids:
+        print(f"[Round {server_round}] No clients available.")
+        return []
+
+      print(f"\n[Client Status]")
+      print(f"  Total available clients: {len(available_client_cids)}")
+      print(f"  Previously participated: {len(self.participated_clients)}")
+    
+      # Categorize clients
+      participated_available = [cid for cid in available_client_cids 
+                             if cid in self.participated_clients]
+      never_participated = [cid for cid in available_client_cids 
+                         if cid not in self.participated_clients]
+    
+      print(f"  Available participated: {len(participated_available)}")
+      print(f"  Available new: {len(never_participated)}")
+    
+      # ================================================================
+      # PHASE 2: COMPUTE SELECTION SCORES
+      # ================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Score Computation] Round {server_round}")
+      print(f"{'─'*80}")
+    
+      # Get adaptive weights
+      alpha_1, alpha_2 = self._adapt_weights(server_round)
+      print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
+    
+      all_scores = {}
+    
+      # Compute scores for participated clients
+      if participated_available:
+        print(f"\n[Participated Clients] Computing scores...")
+        participated_scores = self.compute_global_selection_scores(
+            participated_available, 
+            server_round
+        )
+        all_scores.update(participated_scores)
+    
+      # Compute scores for new clients
+      if never_participated:
+        print(f"\n[New Clients] Assigning initial scores...")
+        for cid in never_participated:
+            reliability = 0.5  # Neutral (no history)
+            fairness = 1.0     # Maximum (never selected)
+            score = (alpha_1 * reliability) + (alpha_2 * fairness)
+            all_scores[cid] = score
+            print(f"  Client {cid}: R={reliability:.3f}, F={fairness:.3f}, Score={score:.3f}")
+    
+      # ================================================================
+      # PHASE 3: SELECT TOP-K CLIENTS BY SCORE
+      # ================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Client Selection]")
+      print(f"{'─'*80}")
+    
+      # Sort all clients by score (descending)
+      all_clients_sorted = sorted(
+        all_scores.items(),
+        key=lambda x: x[1],
+        reverse=True
+      )
+    
+      # Select top-K
+      num_to_select = min(self.min_fit_clients, len(all_clients_sorted))
+      selected_clients_cids = [cid for cid, _ in all_clients_sorted[:num_to_select]]
+    
+      print(f"Selected {len(selected_clients_cids)} clients (top-K by score)")
+    
+      # Show top selections
+      print(f"\nTop selections:")
+      for i, (cid, score) in enumerate(all_clients_sorted[:num_to_select]):
+        status = "NEW" if cid not in self.participated_clients else "participated"
+        selections = self.selection_counts.get(cid, 0)
+        
+        if cid in participated_available:
+            # Show breakdown
+            rel = self.compute_reliability_scores([cid])[cid]
+            fair = self.compute_fairness_scores([cid])[cid]
+            print(f"  {i+1}. {cid:20s} [{status:12s}] Score={score:.4f} (R={rel:.3f}, F={fair:.3f}, n={selections})")
+        else:
+            print(f"  {i+1}. {cid:20s} [{status:12s}] Score={score:.4f} (default)")
+    
+      # ================================================================
+      # PHASE 4: PREPARE INSTRUCTIONS
+      # ================================================================
+      instructions = []
+      for client_id in selected_clients_cids:
+        if client_id in all_clients:
+            client_proxy = all_clients[client_id]
+            client_config = {
+                "server_round": server_round,
+                "total_rounds": getattr(self, 'total_rounds', 100),
+            }
+            
+            instructions.append((client_proxy, FitIns(parameters, client_config)))
+            
+            # Update tracking
+            self.selection_counts[client_id] = self.selection_counts.get(client_id, 0) + 1
+            self.participated_clients.add(client_id)
+    
+      # ================================================================
+      # PHASE 5: SUMMARY
+      # ================================================================
+      print(f"\n{'='*80}")
+      print(f"[Round {server_round}] SELECTION SUMMARY")
+      print(f"{'='*80}")
+      print(f"Selection method: Scoring-based (no EM, no warmup)")
+      print(f"Total selected: {len(instructions)} clients")
+      print(f"New clients selected: {sum(1 for cid in selected_clients_cids if cid not in self.participated_clients)}")
+    
+      print(f"\nSelection frequency distribution:")
+      if self.selection_counts:
+        counts = list(self.selection_counts.values())
+        print(f"  Mean: {np.mean(counts):.1f}")
+        print(f"  Std:  {np.std(counts):.1f}")
+        print(f"  Min:  {np.min(counts)}")
+        print(f"  Max:  {np.max(counts)}")
+    
+      print(f"{'='*80}\n")
+
+      return instructions
+  '''
 
     def _initialize_clusters(self, prototypes_list):
       """Initialize cluster prototypes using k-means++ style initialization"""
