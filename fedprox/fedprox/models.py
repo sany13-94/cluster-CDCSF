@@ -183,6 +183,12 @@ class ModelCDCSF(nn.Module):
         # Get the feature dimension from the base model
         num_ftrs = basemodel.fc.in_features  # Should be 256 for ResNet18
 
+        self.projection = nn.Sequential(
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128)
+        )
+
         # Classification head (directly from features to classes)
         self.fc = nn.Linear(num_ftrs, n_classes)
 
@@ -195,12 +201,17 @@ class ModelCDCSF(nn.Module):
         if h.dim() == 1:
             h = h.unsqueeze(0)
 
+        #features for clustering
+        z = self.projection(h)
+        #normalization for cosine similairty
+        z = F.normalize(self.projection(h), dim=1)
+
         # Classification
         y = self.fc(h)
         
         # Return (features, placeholder, predictions)
         # Placeholder is None but maintains 3-return compatibility
-        return h, None, y
+        return z , None, y
 
 '''
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):

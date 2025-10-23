@@ -274,16 +274,19 @@ class FederatedClient(fl.client.NumPyClient):
             else:
                 # Handle missing classes with numpy zeros
                 if embedding_dim is not None:
-                    prototypes[class_id] = np.zeros(embedding_dim, dtype=np.float32)
+                    prototypes[class_id] = None
+                """
                 elif len(class_embeddings) > 0:
                     # Get dimension from any existing embedding
                     sample_embedding = next(iter(class_embeddings.values()))[0]
-                    prototypes[class_id] = np.zeros_like(sample_embedding, dtype=np.float32)
+                    prototypes[class_id] = None
                     if embedding_dim is None:
                         embedding_dim = sample_embedding.shape[0]
+                
                 else:
                     print(f"ERROR: Client {self.client_id} - No embeddings found!")
                     return
+                """
         
         # Cache prototypes and class counts IN MEMORY
         self.prototypes_from_last_round = prototypes
@@ -355,6 +358,7 @@ class FederatedClient(fl.client.NumPyClient):
 
         
         criterion = torch.nn.CrossEntropyLoss()
+
         optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
         num_classes=9
         #net.to(self.device)
@@ -407,7 +411,7 @@ class FederatedClient(fl.client.NumPyClient):
                 correct += (predicted == labels).sum().item()
 
             epoch_loss /= len(trainloader.dataset)
-            epoch_acc = correct / total
+            #epoch_acc = correct / total
             epoch_acc = accuracy.compute().item()
             epoch_precision = precision.compute().item()
             epoch_recall = recall.compute().item()
