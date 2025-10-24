@@ -678,6 +678,8 @@ save_dir="feature_visualizations_gpaf"
             
         except Exception as e:
             print(f"Error computing metrics: {e}")
+
+    '''
     def configure_fit(
     self, 
     server_round: int, 
@@ -1081,7 +1083,7 @@ save_dir="feature_visualizations_gpaf"
     # SIMPLIFIED CONFIGURE_FIT: NO EM, NO WARMUP
     # ============================================================================
     '''
-    def configure_fit_scoring_only(
+    def configure_fit(
     self, 
     server_round: int, 
     parameters: Parameters, 
@@ -1224,7 +1226,7 @@ save_dir="feature_visualizations_gpaf"
       print(f"{'='*80}\n")
 
       return instructions
-  '''
+
 
     def _initialize_clusters(self, prototypes_list):
       """Initialize cluster prototypes using k-means++ style initialization"""
