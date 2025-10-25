@@ -88,7 +88,7 @@ class FederatedClient(fl.client.NumPyClient):
         self.class_counts_from_last_round = None
         
         # Load existing prototypes if available
-        self._load_prototypes_from_disk()
+        #self._load_prototypes_from_disk()
         
     def set_parameters(self, parameters):
         """Set model parameters from a list of NumPy arrays."""
