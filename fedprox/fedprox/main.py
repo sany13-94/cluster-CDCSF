@@ -39,7 +39,7 @@ import torch
 import numpy as np
 from typing import List
 from torch.utils.data import DataLoader
-strategy="gpaf"
+strategy="fedavg"
  # Create or get experiment
 experiment_name = "fedgpaf_Fed_FL32"
 experiment = mlflow.get_experiment_by_name(experiment_name)
@@ -290,7 +290,7 @@ def get_server_fn(mlflow=None):
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=100)
+    config = ServerConfig(num_rounds=200)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
