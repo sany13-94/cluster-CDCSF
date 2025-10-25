@@ -88,7 +88,7 @@ class FederatedClient(fl.client.NumPyClient):
         self.class_counts_from_last_round = None
         
         # Load existing prototypes if available
-        #self._load_prototypes_from_disk()
+        self._load_prototypes_from_disk()
         
     def set_parameters(self, parameters):
         """Set model parameters from a list of NumPy arrays."""
@@ -152,7 +152,7 @@ class FederatedClient(fl.client.NumPyClient):
            
             # Extract and cache prototypes after training
             #print(f"Client {self.client_id} extracting prototypes...")
-            #self._extract_and_cache_prototypes(round_number)
+            self._extract_and_cache_prototypes(round_number)
             
             training_duration = time.time() - start_time
             
@@ -160,15 +160,15 @@ class FederatedClient(fl.client.NumPyClient):
             #updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
             
             # Return parameters and metrics (NumPyClient format)
-            #num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
-            '''
+            num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
+           
             return  (self.get_parameters(), num_examples, {
                 "data_size": num_examples,
                 "duration": training_duration,
             })
-            '''
+           
           
-            return self.get_parameters(self.net), len(self.traindata), {}
+            #return self.get_parameters(self.net), len(self.traindata), {}
 
            
         except Exception as e:
@@ -176,7 +176,7 @@ class FederatedClient(fl.client.NumPyClient):
             import traceback
             traceback.print_exc()
             raise e
-    '''
+   
     def get_properties(self, config):
         """Send prototypes to server when requested (NumPyClient interface)."""
         
@@ -353,7 +353,7 @@ class FederatedClient(fl.client.NumPyClient):
             self.prototypes_from_last_round = None
             self.class_counts_from_last_round = None
 
-    '''
+    
     def train(self, net, trainloader, client_id, epochs, simulate_delay=False):
         """Train the network on the training set."""
 
