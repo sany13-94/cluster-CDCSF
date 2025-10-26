@@ -325,9 +325,9 @@ def get_server_fn(mlflow=None):
       strategyi = FedAVGWithEval(
       fraction_fit=1.0,  # Train with 50% of available clients
       fraction_evaluate=1,  # Evaluate with all available clients
-      min_fit_clients=8,
-      min_evaluate_clients=8,
-      min_available_clients=8,
+      min_fit_clients=6,
+      min_evaluate_clients=6,
+      min_available_clients=6,
       evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,  # Add this
 
       on_evaluate_config_fn=get_on_evaluate_config_fn(),
@@ -348,7 +348,7 @@ def get_server_fn(mlflow=None):
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=4)
+    config = ServerConfig(num_rounds=3)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
@@ -464,9 +464,9 @@ def main(cfg: DictConfig) -> None:
     save_path = HydraConfig.get().runtime.output_dir
 
     # 1. Save and visualize participation
-    participation_df = server.GPAFStrategy.save_participation_stats("participation_stats.csv")
+    participation_df = server.save_participation_stats("participation_stats.csv")
     visualize_client_participation(
-    server.GPAFStrategy.client_participation_count,
+    server.client_participation_count,
     save_path="participation_distribution.png",
     method_name="FedProto-Fair"
 )
