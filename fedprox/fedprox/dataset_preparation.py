@@ -345,17 +345,7 @@ def make_pathmnist_clients_with_domains(
       print(f"Client {i} | Domain ID: {domain_assignment[i] if i < len(domain_assignment) else 'extra_domain'} | #Batches: {len(loader)}")
 
 
-    print(f'=== train data size {len(train_loaders)}====')
-    images, labels = next(iter(train_loaders[3]))
-    print(f"Partition 3 first sample image:  {images[0]}")
-    images, labels = next(iter(train_loaders[7]))
-    print(f"Partition 7 first sample image:  {images[0]}")
-    images, labels = next(iter(train_loaders[10]))
-    print(f"Partition 10 first sample image:  {images[0]}")
-    images, labels = next(iter(train_loaders[5]))
-    print(f"Partition 5 first sample image:  {images[0]}")
-    images, labels = next(iter(train_loaders[8]))
-    print(f"Partition 8 first sample image:  {images[0]}")
+    
 
     # Generate and print signatures for each client
     
