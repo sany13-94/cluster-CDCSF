@@ -91,6 +91,8 @@ class GPAFStrategy(FedAvg):
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
+        # Simple participation counter
+        self.client_participation_count = {}  # client_id -> number of times selected
         
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
@@ -581,62 +583,62 @@ save_dir="feature_visualizations_gpaf"
     
       ax6.axhline(y=1.0, color='blue', linestyle='--', linewidth=1, alpha=0.5)
       ax6.set_xlabel('Client ID (sorted by accuracy)', fontsize=12, fontweight='bold')
-    ax6.set_ylabel('Classification Accuracy', fontsize=12, fontweight='bold')
-    ax6.set_title('Per-Client Detection Accuracy', fontsize=14, fontweight='bold')
-    ax6.legend(loc='lower right')
-    ax6.grid(axis='y', alpha=0.3)
-    ax6.set_ylim([0, 1.05])
+      ax6.set_ylabel('Classification Accuracy', fontsize=12, fontweight='bold')
+      ax6.set_title('Per-Client Detection Accuracy', fontsize=14, fontweight='bold')
+      ax6.legend(loc='lower right')
+      ax6.grid(axis='y', alpha=0.3)
+      ax6.set_ylim([0, 1.05])
     
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"Validation analysis saved to {save_path}")
-    plt.show()
+      plt.savefig(save_path, dpi=300, bbox_inches='tight')
+      print(f"Validation analysis saved to {save_path}")
+      plt.show()
     
-    # ========== PRINT STATISTICAL SUMMARY ==========
-    print("\n" + "="*70)
-    print("STRAGGLER DETECTION VALIDATION SUMMARY")
-    print("="*70)
-    print(f"Total observations: {len(validation_df)}")
-    print(f"Ground truth stragglers: {len(ground_truth_stragglers)} clients")
-    print(f"Ground truth fast clients: {len(validation_df['client_id'].unique()) - len(ground_truth_stragglers)} clients")
-    print("\n" + "-"*70)
-    print("OVERALL PERFORMANCE:")
-    print("-"*70)
-    print(f"  Accuracy:    {accuracy:.3f} ({accuracy*100:.1f}%)")
-    print(f"  Precision:   {precision:.3f} ({precision*100:.1f}%)")
-    print(f"  Recall:      {recall:.3f} ({recall*100:.1f}%)")
-    print(f"  Specificity: {specificity:.3f} ({specificity*100:.1f}%)")
-    print(f"  F1-Score:    {f1:.3f}")
-    print("\n" + "-"*70)
-    print("ERROR ANALYSIS:")
-    print("-"*70)
-    print(f"  False Positives: {len(false_positives)} (Fast clients wrongly labeled as stragglers)")
-    print(f"  False Negatives: {len(false_negatives)} (Stragglers wrongly labeled as fast)")
-    print("\n" + "-"*70)
-    print("INTERPRETATION:")
-    print("-"*70)
+      # ========== PRINT STATISTICAL SUMMARY ==========
+      print("\n" + "="*70)
+      print("STRAGGLER DETECTION VALIDATION SUMMARY")
+      print("="*70)
+      print(f"Total observations: {len(validation_df)}")
+      print(f"Ground truth stragglers: {len(ground_truth_stragglers)} clients")
+      print(f"Ground truth fast clients: {len(validation_df['client_id'].unique()) - len(ground_truth_stragglers)} clients")
+      print("\n" + "-"*70)
+      print("OVERALL PERFORMANCE:")
+      print("-"*70)
+      print(f"  Accuracy:    {accuracy:.3f} ({accuracy*100:.1f}%)")
+      print(f"  Precision:   {precision:.3f} ({precision*100:.1f}%)")
+      print(f"  Recall:      {recall:.3f} ({recall*100:.1f}%)")
+      print(f"  Specificity: {specificity:.3f} ({specificity*100:.1f}%)")
+      print(f"  F1-Score:    {f1:.3f}")
+      print("\n" + "-"*70)
+      print("ERROR ANALYSIS:")
+      print("-"*70)
+      print(f"  False Positives: {len(false_positives)} (Fast clients wrongly labeled as stragglers)")
+      print(f"  False Negatives: {len(false_negatives)} (Stragglers wrongly labeled as fast)")
+      print("\n" + "-"*70)
+      print("INTERPRETATION:")
+      print("-"*70)
     
-    if accuracy >= 0.85:
+      if accuracy >= 0.85:
         print("  ✓ EXCELLENT: T_c > T_max criterion is highly reliable")
-    elif accuracy >= 0.75:
+      elif accuracy >= 0.75:
         print("  ✓ GOOD: T_c > T_max criterion is reasonably reliable")
-    elif accuracy >= 0.65:
+      elif accuracy >= 0.65:
         print("  ⚠ MODERATE: T_c > T_max criterion shows moderate reliability")
-    else:
+      else:
         print("  ✗ POOR: T_c > T_max criterion needs improvement")
     
-    if precision >= 0.80:
+      if precision >= 0.80:
         print("  ✓ Low false positive rate: Fast clients rarely mislabeled")
-    else:
+      else:
         print("  ⚠ Significant false positives: Some fast clients mislabeled as stragglers")
     
-    if recall >= 0.70:
+      if recall >= 0.70:
         print("  ✓ High detection rate: Most stragglers correctly identified")
-    else:
+      else:
         print("  ⚠ Missing stragglers: Some stragglers not detected")
     
-    print("="*70 + "\n")
+      print("="*70 + "\n")
     
-    return {
+      return {
         'accuracy': accuracy,
         'precision': precision,
         'recall': recall,
@@ -1035,7 +1037,7 @@ save_dir="feature_visualizations_gpaf"
         except Exception as e:
             print(f"Error computing metrics: {e}")
 
-    '''
+   
     def configure_fit(
     self, 
     server_round: int, 
@@ -1430,10 +1432,37 @@ save_dir="feature_visualizations_gpaf"
     
       print(f"{'='*80}\n")
 
+      # After you select clients (in your existing code where you have selected_clients_cids)
+      # Track participation
+      for client_id in selected_clients_cids:
+            if client_id not in self.client_participation_count:
+                self.client_participation_count[client_id] = 0
+            self.client_participation_count[client_id] += 1
+
       return instructions
 
+    def save_participation_stats(self, filename="client_participation.csv"):
+        """Save participation statistics at the end of training"""
+        import pandas as pd
+        
+        # Create dataframe
+        data = []
+        for client_id, count in self.client_participation_count.items():
+            data.append({
+                'client_id': client_id,
+                'participation_count': count,
+                'participation_rate': count / self.total_rounds_completed
+            })
+        
+        df = pd.DataFrame(data)
+        df = df.sort_values('participation_count', ascending=False)
+        df.to_csv(filename, index=False)
+        print(f"Participation stats saved to {filename}")
+        return df
 
-  # Helper methods (add to your strategy class)
+    
+
+    # Helper methods (add to your strategy class)
     
     # ============================================================================
     # SIMPLIFIED CONFIGURE_FIT: NO EM, NO WARMUP
@@ -1583,7 +1612,7 @@ save_dir="feature_visualizations_gpaf"
 
       return instructions
 
-
+    '''
     def _initialize_clusters(self, prototypes_list):
       """Initialize cluster prototypes using k-means++ style initialization"""
       import numpy as np
