@@ -339,9 +339,9 @@ def get_server_fn(mlflow=None):
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
         #fraction_evaluate=1.0,
-        min_fit_clients=8,  # Set minimum number of clients for training
-        min_evaluate_clients=8,
-        min_available_clients=8,
+        min_fit_clients=  6,  # Set minimum number of clients for training
+        min_evaluate_clients=6,
+        min_available_clients=6,
 
         #on_fit_config_fn=fit_config_fn,
      
