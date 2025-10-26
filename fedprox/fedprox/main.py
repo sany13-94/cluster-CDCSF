@@ -375,7 +375,7 @@ def main(cfg: DictConfig) -> None:
 
 
     print("🔍 Visualizing same image index across clients to inspect domain shifts...")
-    visualize_from_train_loaders(trainloaders, k=15, d=3, image_idx=0)
+    visualize_from_train_loaders(trainloaders, k=10, d=3, image_idx=0)
 
     # Print data distribution before visualization
    
