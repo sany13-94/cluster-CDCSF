@@ -73,7 +73,7 @@ class GPAFStrategy(FedAvg):
         min_fit_clients: int = 2,
         min_evaluate_clients=2,
         min_available_clients=2,
-        batch_size=13,
+        batch_size=32,
         ground_truth_stragglers=None,
    evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
   
