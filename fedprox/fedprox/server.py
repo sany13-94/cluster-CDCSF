@@ -87,7 +87,7 @@ class GPAFStrategy(FedAvg):
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
 
         #clusters parameters
-        self.warmup_rounds = 8  # Stage 1 duration
+        self.warmup_rounds = 2  # Stage 1 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
@@ -297,6 +297,7 @@ save_dir="feature_visualizations_gpaf"
         
         # Perform FedAvg aggregation
         aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
+
         if server_round == self.total_rounds :
             print("\n" + "="*80)
             print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
@@ -317,6 +318,8 @@ save_dir="feature_visualizations_gpaf"
         participation_file = os.path.join(self.output_dir, "client_participation.csv")
         self.save_participation_stats(participation_file)
         print(f"  ✓ Participation stats: {participation_file}")
+
+
     def _validate_straggler_predictions(self, server_round, results):
         """
         Compare T_c > T_max predictions against pre-defined ground truth
@@ -1194,7 +1197,7 @@ save_dir="feature_visualizations_gpaf"
 
             # === ADD VISUALIZATION HERE ===
 
-            # ✅ NEW: Visualize clustering
+            # ✅ NEW: Visualize clustering PROTOTYPES
             if len(all_prototypes_list) >= self.num_clusters:
               self._visualize_clusters(
                 prototypes=all_prototypes_list,
@@ -1204,36 +1207,8 @@ save_dir="feature_visualizations_gpaf"
             )
 
             true_domains = np.array(domains_ids)
-          
-            self.visualizer.visualize_clustering_from_prototypes(
-            all_prototypes_list=all_prototypes_list,
-            client_ids=all_client_ids,
- true_domain_labels=true_domains,
+           
             
-            client_assignments=self.client_assignments,
-              server_round=server_round,
-              num_clusters=self.num_clusters,
-                save=True)
-            # Also plot statistics
-            predicted = np.array([self.client_assignments.get(cid, -1) for cid in all_client_ids])
-            true_domains = np.array(domains_ids)
-            self.visualizer.plot_clustering_statistics(
-        predicted_clusters=predicted,
-        true_domains=true_domains,
-        client_ids=all_client_ids,
-        server_round=server_round,
-        save=True
-    )#
-            # Also plot statistics
-            predicted = np.array([self.client_assignments.get(cid, -1) for cid in all_client_ids])
-            true_domains = np.array(domains_ids)
-            self.visualizer.plot_clustering_statistics(
-        predicted_clusters=predicted,
-        true_domains=true_domains,
-        client_ids=all_client_ids,
-        server_round=server_round,
-        save=True
-    )
         else:
             print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
             print(f"  Will use unified pool selection")
