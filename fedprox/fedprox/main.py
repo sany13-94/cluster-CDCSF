@@ -348,8 +348,7 @@ def get_server_fn(mlflow=None):
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=2)
-
+    config = ServerConfig(num_rounds=3)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
@@ -374,39 +373,7 @@ def main(cfg: DictConfig) -> None:
 
     trainloaders, valloaders,domain_assignment=data_load(cfg)
 
-
-    print("🔍 Visualizing same image index across clients to inspect domain shifts...")
-    visualize_from_train_loaders(trainloaders, k=10, d=3, image_idx=0)
-
-    # Print data distribution before visualization
-   
-        
-    #visualize_intensity_distributions(trainloaders, cfg.num_clients) 
-    #visualize_class_domain_shift(trainloaders)    # Visualize label distributions
-    #visualizer = LabelDistributionVisualizer(
-    #    num_clients=cfg.num_clients,
-    #    num_classes=2  # For binary classification in breast cancer dataset
-    #)
-    # Create visualization directory
-    """
-    viz_dir = os.path.join(os.getcwd(), 'visualizations')
-    # Generate and save visualizations
-    #save_path = os.path.join(viz_dir, 'initial_label_distribution.png')
-    #client_distributions, global_distribution = visualizer.plot_label_distributions(
-    #    trainloaders,
-    #    save_path=save_path
-    #)
-    
-    # Log distribution metrics
-    #distribution_metrics = visualizer.compute_distribution_metrics(client_distributions)
-    """
-    CLIENT_RESOURCES = {
-    "num_cpus": 2, 
-    "num_gpus": 2.0 # Alloue une unité GPU à l'acteur Ray
-} 
-
-   
-    # à chaque client Ray dans la simulation.
+    #visualize_from_train_loaders(trainloaders, k=10, d=3, image_idx=0)
      
     #print(f'2: {valloaders[0]}')
     client_fn = gen_client_fn(
@@ -463,17 +430,16 @@ def main(cfg: DictConfig) -> None:
     # generate plots using the `history`
     
     save_path = HydraConfig.get().runtime.output_dir
-    # Create a temporary context to extract the components (including strategy)
-    from flwr.server import Context
-    components = server_fn(Context())
 
-    strategy = components.strategy
+    # 1. Save and visualize participation
+    participation_df = server.save_participation_stats("participation_stats.csv")
+    visualize_client_participation(
+    server.client_participation_count,
+    save_path="participation_distribution.png",
+    method_name="FedProto-Fair"
+)
 
-    
 
-    # After training, call the function on the strategy
-    participation_df = strategy.save_participation_stats("participation_stats.csv")
-  
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
 def data_load(cfg: DictConfig):
