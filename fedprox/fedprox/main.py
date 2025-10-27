@@ -431,14 +431,15 @@ def main(cfg: DictConfig) -> None:
     
     save_path = HydraConfig.get().runtime.output_dir
 
-    # 1. Save and visualize participation
-    participation_df = server.save_participation_stats("participation_stats.csv")
-    visualize_client_participation(
-    server.client_participation_count,
-    save_path="participation_distribution.png",
-    method_name="FedProto-Fair"
-)
 
+    from flwr.server import Context
+    components = server_fn(Context())
+
+    # Keep a reference to your strategy instance
+    strategy = components.strategy
+
+    participation_df = strategy.save_participation_stats("participation_stats.csv")
+  
 
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
