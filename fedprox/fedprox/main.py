@@ -348,7 +348,8 @@ def get_server_fn(mlflow=None):
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=3)
+    config = ServerConfig(num_rounds=2)
+
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
@@ -462,16 +463,17 @@ def main(cfg: DictConfig) -> None:
     # generate plots using the `history`
     
     save_path = HydraConfig.get().runtime.output_dir
+    # Create a temporary context to extract the components (including strategy)
+    from flwr.server import Context
+    components = server_fn(Context())
 
-    # 1. Save and visualize participation
-    participation_df = server.save_participation_stats("participation_stats.csv")
-    visualize_client_participation(
-    server.client_participation_count,
-    save_path="participation_distribution.png",
-    method_name="FedProto-Fair"
-)
+    strategy = components.strategy
 
+    
 
+    # After training, call the function on the strategy
+    participation_df = strategy.save_participation_stats("participation_stats.csv")
+  
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
 def data_load(cfg: DictConfig):
