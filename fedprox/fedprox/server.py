@@ -297,10 +297,26 @@ save_dir="feature_visualizations_gpaf"
         
         # Perform FedAvg aggregation
         aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
-        
+        if server_round == self.total_rounds :
+            print("\n" + "="*80)
+            print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
+            print("="*80)
+            self._save_all_results()
         return ndarrays_to_parameters(aggregated_params), {}
     
-    
+    def _save_all_results(self):
+        """
+        Automatically save all tracking data
+        Called internally when training completes
+        """
+        import os
+        
+        print("\n[Auto-Save] Saving experiment results...")
+        
+        # 1. Save participation statistics
+        participation_file = os.path.join(self.output_dir, "client_participation.csv")
+        self.save_participation_stats(participation_file)
+        print(f"  ✓ Participation stats: {participation_file}")
     def _validate_straggler_predictions(self, server_round, results):
         """
         Compare T_c > T_max predictions against pre-defined ground truth

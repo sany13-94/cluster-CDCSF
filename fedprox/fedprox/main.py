@@ -432,14 +432,7 @@ def main(cfg: DictConfig) -> None:
     save_path = HydraConfig.get().runtime.output_dir
 
 
-    from flwr.server import Context
-    components = server_fn(Context())
-
-    # Keep a reference to your strategy instance
-    strategy = components.strategy
-
-    participation_df = strategy.save_participation_stats("participation_stats.csv")
-  
+   
 
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
