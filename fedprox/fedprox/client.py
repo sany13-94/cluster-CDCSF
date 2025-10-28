@@ -128,10 +128,16 @@ class FederatedClient(fl.client.NumPyClient):
             simulate_delay = False
             
             print(f"Client {self.client_id} starting fit() for round {round_number}")
-            stragglers = set(config.get("simulate_stragglers", []))
+            simulate_stragglers_str = config.get("simulate_stragglers", "")
+            if simulate_stragglers_str:
+              simulate_stragglers = set(simulate_stragglers_str.split(","))
+            else:
+              simulate_stragglers = set()
+
+            simulate_delay = self.client_id in simulate_stragglers
+            print(f"[Client {self.client_id}] Is straggler: {simulate_delay}")
+
     
-            # Determine if this client is a persistent straggler
-            simulate_delay = self.client_id in stragglers
 
             print(f"Client {self.client_id}: simulate_delay={simulate_delay}")
 

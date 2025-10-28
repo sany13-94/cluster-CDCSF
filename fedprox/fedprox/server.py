@@ -1106,13 +1106,14 @@ save_dir="feature_visualizations_gpaf"
       selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
      
       instructions = []
+    
       for client_id in selected_clients_cids:
         if client_id in all_clients:
             client_proxy = all_clients[client_id]
             client_config = {
                 "server_round": server_round,
                 "total_rounds": getattr(self, 'total_rounds', 100), 
-                 "simulate_stragglers": list(self.ground_truth_stragglers),
+    "simulate_stragglers": ",".join(self.ground_truth_stragglers),  # ✅ store as string
 
             }
             
