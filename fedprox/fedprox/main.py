@@ -39,7 +39,7 @@ import torch
 import numpy as np
 from typing import List
 from torch.utils.data import DataLoader
-strategy="fedavg"
+strategy="gpaf"
  # Create or get experiment
 experiment_name = "fedgpaf_Fed_FL32"
 experiment = mlflow.get_experiment_by_name(experiment_name)
@@ -342,7 +342,7 @@ def get_server_fn(mlflow=None):
         min_fit_clients=  6,  # Set minimum number of clients for training
         min_evaluate_clients=6,
         min_available_clients=6,
-
+ total_rounds = 3
         #on_fit_config_fn=fit_config_fn,
      
       )
