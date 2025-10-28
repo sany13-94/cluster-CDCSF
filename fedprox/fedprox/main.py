@@ -445,7 +445,7 @@ def main(cfg: DictConfig) -> None:
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
 
     per_round_df = pd.read_csv("results/validation_results.csv")
-    final_df = pd.read_csv("results/final_classification.csv")
+    final_df = pd.read_csv("client_participation.csv")
         
     print("[1/3] Generating straggler detection analysis...")
     analyze_straggler_detection_with_ground_truth(
