@@ -341,10 +341,12 @@ def get_server_fn(mlflow=None):
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
         #fraction_evaluate=1.0,
-        min_fit_clients=  6,  # Set minimum number of clients for training
-        min_evaluate_clients=6,
-        min_available_clients=6,
- total_rounds = 3
+        min_fit_clients=  4,  # Set minimum number of clients for training
+        min_evaluate_clients=4,
+        min_available_clients=4,
+         ground_truth_stragglers=ground_truth_stragglers
+ total_rounds = 3,
+
         #on_fit_config_fn=fit_config_fn,
      
       )
@@ -442,7 +444,7 @@ def main(cfg: DictConfig) -> None:
     # Load saved validation data
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
 
-    per_round_df = pd.read_csv("results/per_round_validation.csv")
+    per_round_df = pd.read_csv("results/validation_results.csv")
     final_df = pd.read_csv("results/final_classification.csv")
         
     print("[1/3] Generating straggler detection analysis...")

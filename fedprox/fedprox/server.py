@@ -76,6 +76,7 @@ class GPAFStrategy(FedAvg):
         batch_size=32,
         ground_truth_stragglers=None,
          total_rounds: int = 15,
+         
    evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
   
     ) -> None:
@@ -290,6 +291,14 @@ save_dir="feature_visualizations_gpaf"
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
 
+
+        # In aggregate_fit() - CORRECT! After clients finish training
+        for client_proxy, fit_res in results:
+          client_id = client_proxy.cid
+          if client_id not in self.client_participation_count:
+            self.client_participation_count[client_id] = 0
+          self.client_participation_count[client_id] += 1
+
         # After EMA update, validate predictions
         self._validate_straggler_predictions(server_round, results)
         
@@ -306,29 +315,12 @@ save_dir="feature_visualizations_gpaf"
             self._save_all_results()
         return ndarrays_to_parameters(aggregated_params), {}
 
-    
-    
+
 
     def _save_all_results(self):
-        """Save all tracking data"""
-        import os
-        self.output_dir="client_participations"
-        os.makedirs(self.output_dir, exist_ok=True)
-        print("[Hook] Saving results...")
-        
-        participation_file = os.path.join(self.output_dir, "client_participation.csv")
-        self.save_participation_stats(participation_file)
-        print(f"  ✓ Participation: {participation_file}")
-        plot_file = os.path.join(self.output_dir, "participation_plot.png")
-
-        self.visualize_client_participation(
-                self.client_participation_count,
-                save_path=plot_file,
-                method_name="FedProto-Fair"
-            )
-        print(f"  ✓ Visualization: {plot_file}")
-        
-
+      
+        self.save_participation_stats()
+        self.save_validation_results()
 
     def _validate_straggler_predictions(self, server_round, results):
         """
@@ -376,6 +368,7 @@ save_dir="feature_visualizations_gpaf"
             }
             
             self.validation_history.append(record)
+            
     
     def _classify_prediction(self, predicted, actual):
         """Classify prediction type for confusion matrix"""
@@ -1155,12 +1148,7 @@ save_dir="feature_visualizations_gpaf"
     
       print(f"{'='*80}\n")
 
-      # After you select clients (in your existing code where you have selected_clients_cids)
-      # Track participation
-      for client_id in selected_clients_cids:
-            if client_id not in self.client_participation_count:
-                self.client_participation_count[client_id] = 0
-            self.client_participation_count[client_id] += 1
+     
 
       return instructions
 
