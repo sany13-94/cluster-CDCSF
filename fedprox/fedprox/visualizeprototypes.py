@@ -36,7 +36,7 @@ class ClusterVisualizationForConfigureFit:
         self.colors = plt.cm.Set2(np.linspace(0, 1, 10))
     #CLIENTS partiticpants visualization and stragglers figure 4
 
-    def analyze_straggler_detection_with_ground_truth(validation_df, 
+    def analyze_straggler_detection_with_ground_truth(self, validation_df, 
                                                    ground_truth_stragglers,
                                                    save_path="straggler_validation_gt.png"):
       """
@@ -315,7 +315,7 @@ class ClusterVisualizationForConfigureFit:
         'confusion_matrix': cm
     }
 
-    def visualize_client_participation(participation_dict, save_path="participation_chart.png", 
+    def visualize_client_participation(self, participation_dict, save_path="participation_chart.png", 
                                    method_name="FedProto-Fair"):
       """
       Simple bar chart showing how many times each client participated
