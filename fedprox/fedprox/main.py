@@ -336,7 +336,7 @@ def get_server_fn(mlflow=None):
     else: 
       print(f'strategy of method {strategy}')
       # Define stragglers
-      ground_truth_stragglers = {f'client_{i}' for i in range(2)}
+ 
       strategyi = server.GPAFStrategy(
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
@@ -345,10 +345,7 @@ def get_server_fn(mlflow=None):
         min_evaluate_clients=4,
         min_available_clients=4,
          ground_truth_stragglers=ground_truth_stragglers
- total_rounds = 3,
-
-        #on_fit_config_fn=fit_config_fn,
-     
+ total_rounds = 3,     
       )
 
     # Configure the server for 5 rounds of training
