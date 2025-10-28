@@ -335,7 +335,8 @@ def get_server_fn(mlflow=None):
       print(f'strategy ggg {strategyi}')
     else: 
       print(f'strategy of method {strategy}')
-      ground_truth_stragglers= {1}
+      # Define stragglers
+      ground_truth_stragglers = {f'client_{i}' for i in range(2)}
       strategyi = server.GPAFStrategy(
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
@@ -431,9 +432,33 @@ def main(cfg: DictConfig) -> None:
     # generate plots using the `history`
     
     save_path = HydraConfig.get().runtime.output_dir
+    import pandas as pd
+    
+    from visualizeprototypes import (
+            analyze_straggler_detection_with_ground_truth,
+            visualize_client_participation,
+        )
 
+    # Load saved validation data
+    ground_truth_stragglers = {f'client_{i}' for i in range(2)}
 
-   
+    per_round_df = pd.read_csv("results/per_round_validation.csv")
+    final_df = pd.read_csv("results/final_classification.csv")
+        
+    print("[1/3] Generating straggler detection analysis...")
+    analyze_straggler_detection_with_ground_truth(
+            validation_df=per_round_df,
+            ground_truth_stragglers=ground_truth_stragglers,
+            save_path="results/straggler_validation_detailed.png"
+        )
+        
+    print("[2/3] Generating participation visualization...")
+    visualize_client_participation(
+            strategy.client_participation_count,
+            save_path="results/participation_distribution.png",
+            method_name="FedProto-Fair"
+        )
+        
 
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     

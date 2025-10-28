@@ -20,7 +20,7 @@ import matplotlib.cm as cm
 from matplotlib.colors import ListedColormap
 from sklearn.manifold import TSNE
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
-    
+import pandas as pd
 from flwr.common import GetPropertiesIns
 import json
 from sklearn.manifold import TSNE
@@ -291,7 +291,7 @@ save_dir="feature_visualizations_gpaf"
         self.total_rounds_completed = server_round
 
         # After EMA update, validate predictions
-        #self._validate_straggler_predictions(server_round, results)
+        self._validate_straggler_predictions(server_round, results)
         
         print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
         print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
@@ -307,71 +307,13 @@ save_dir="feature_visualizations_gpaf"
         return ndarrays_to_parameters(aggregated_params), {}
 
     
-    #CLIENTS partiticpants visualization figure 4
-    def visualize_client_participation(participation_dict, save_path="participation_chart.png", 
-                                   method_name="FedProto-Fair"):
-      """
-      Simple bar chart showing how many times each client participated
     
-      Args:
-        participation_dict: Dictionary {client_id: count}
-        save_path: Where to save the plot
-        method_name: Name of your method for the title
-      """
-   
-    
-      # Sort clients by participation count
-      sorted_items = sorted(participation_dict.items(), key=lambda x: int(x[0].split('_')[1]))
-      client_ids = [item[0] for item in sorted_items]
-      counts = [item[1] for item in sorted_items]
-    
-      # Create figure
-      fig, ax = plt.subplots(figsize=(14, 6))
-    
-      # Create bar chart
-      bars = ax.bar(range(len(client_ids)), counts, color='steelblue', edgecolor='black', alpha=0.7)
-    
-      # Highlight clients with 0 participation in red
-      for i, count in enumerate(counts):
-        if count == 0:
-            bars[i].set_color('red')
-            bars[i].set_alpha(0.5)
-    
-      # Customize plot
-      ax.set_xlabel('Client ID', fontsize=12, fontweight='bold')
-      ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
-      ax.set_title(f'Client Participation Distribution - {method_name}', 
-                 fontsize=14, fontweight='bold')
-      ax.set_xticks(range(len(client_ids)))
-      ax.set_xticklabels(client_ids, rotation=45, ha='right')
-      ax.grid(axis='y', alpha=0.3, linestyle='--')
-    
-      # Add statistics text
-      total_clients = len(client_ids)
-      participated = sum(1 for c in counts if c > 0)
-      avg_participation = np.mean(counts)
-      std_participation = np.std(counts)
-    
-      stats_text = f'Total Clients: {total_clients}\n'
-      stats_text += f'Participated: {participated} ({participated/total_clients*100:.1f}%)\n'
-      stats_text += f'Avg Participation: {avg_participation:.2f} ± {std_participation:.2f}'
-    
-      ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-            verticalalignment='top', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-            fontsize=10)
-    
-      plt.tight_layout()
-      plt.savefig(save_path, dpi=300, bbox_inches='tight')
-      print(f"Visualization saved to {save_path}")
-      plt.show()
-
-
 
     def _save_all_results(self):
         """Save all tracking data"""
         import os
         self.output_dir="client_participations"
+        os.makedirs(self.output_dir, exist_ok=True)
         print("[Hook] Saving results...")
         
         participation_file = os.path.join(self.output_dir, "client_participation.csv")
@@ -448,292 +390,14 @@ save_dir="feature_visualizations_gpaf"
     
     def save_validation_results(self, filename="validation_results.csv"):
         """Save validation results"""
-        import pandas as pd
+        
         
         df = pd.DataFrame(self.validation_history)
         df.to_csv(filename, index=False)
         print(f"Validation results saved to {filename}")
         return df
 
-    def analyze_straggler_detection_with_ground_truth(validation_df, 
-                                                   ground_truth_stragglers,
-                                                   save_path="straggler_validation_gt.png"):
-      """
-      Comprehensive analysis comparing T_c > T_max against pre-defined stragglers
-      """
-      import matplotlib.pyplot as plt
-      import seaborn as sns
-      from sklearn.metrics import (confusion_matrix, accuracy_score, precision_score, 
-                                 recall_score, f1_score, classification_report)
-      import numpy as np
     
-      fig = plt.figure(figsize=(20, 12))
-      gs = fig.add_gridspec(3, 4, hspace=0.35, wspace=0.3)
-    
-      # ========== 1. CONFUSION MATRIX ==========
-      ax1 = fig.add_subplot(gs[0, :2])
-    
-      y_true = validation_df['ground_truth_straggler'].astype(int)
-      y_pred = validation_df['predicted_straggler'].astype(int)
-    
-      cm = confusion_matrix(y_true, y_pred)
-    
-      # Create annotated heatmap with percentages
-      cm_percent = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis] * 100
-      annot = np.array([[f'{cm[i,j]}\n({cm_percent[i,j]:.1f}%)' 
-                       for j in range(cm.shape[1])] 
-                      for i in range(cm.shape[0])])
-    
-      sns.heatmap(cm, annot=annot, fmt='', cmap='Blues', ax=ax1,
-                xticklabels=['Fast', 'Straggler'],
-                yticklabels=['Fast', 'Straggler'],
-                cbar_kws={'label': 'Count'})
-    
-      ax1.set_xlabel('Predicted by T_c > T_max', fontsize=13, fontweight='bold')
-      ax1.set_ylabel('Ground Truth (Pre-defined)', fontsize=13, fontweight='bold')
-      ax1.set_title('Straggler Detection Accuracy', fontsize=15, fontweight='bold')
-    
-      # Calculate metrics
-      accuracy = accuracy_score(y_true, y_pred)
-      precision = precision_score(y_true, y_pred, zero_division=0)
-      recall = recall_score(y_true, y_pred, zero_division=0)
-      f1 = f1_score(y_true, y_pred, zero_division=0)
-      specificity = cm[0, 0] / (cm[0, 0] + cm[0, 1]) if (cm[0, 0] + cm[0, 1]) > 0 else 0
-    
-      # Add metrics box
-      metrics_text = f'Overall Metrics:\n'
-      metrics_text += f'━━━━━━━━━━━━━━━━\n'
-      metrics_text += f'Accuracy:    {accuracy:.3f}\n'
-      metrics_text += f'Precision:   {precision:.3f}\n'
-      metrics_text += f'Recall:      {recall:.3f}\n'
-      metrics_text += f'Specificity: {specificity:.3f}\n'
-      metrics_text += f'F1-Score:    {f1:.3f}'
-    
-      ax1.text(1.2, 0.5, metrics_text, transform=ax1.transAxes,
-             verticalalignment='center',
-             bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.6),
-             fontsize=11, fontweight='bold', family='monospace')
-    
-      # ========== 2. DETAILED METRICS TABLE ==========
-      ax2 = fig.add_subplot(gs[0, 2:])
-      ax2.axis('off')
-    
-      # Get classification report
-      report = classification_report(y_true, y_pred, 
-                                   target_names=['Fast Client', 'Straggler'],
-                                   output_dict=True)
-    
-      table_text = "Classification Report\n"
-      table_text += "="*50 + "\n\n"
-      table_text += f"{'Class':<15} {'Precision':<12} {'Recall':<12} {'F1-Score':<12}\n"
-      table_text += "-"*50 + "\n"
-    
-      for label in ['Fast Client', 'Straggler']:
-        if label in report:
-            table_text += f"{label:<15} "
-            table_text += f"{report[label]['precision']:.3f}        "
-            table_text += f"{report[label]['recall']:.3f}        "
-            table_text += f"{report[label]['f1-score']:.3f}\n"
-    
-      table_text += "-"*50 + "\n"
-      table_text += f"{'Accuracy':<15} {accuracy:.3f}\n"
-      table_text += f"{'Macro Avg':<15} {report['macro avg']['f1-score']:.3f}\n"
-      table_text += f"{'Weighted Avg':<15} {report['weighted avg']['f1-score']:.3f}\n"
-    
-      ax2.text(0.05, 0.95, table_text, transform=ax2.transAxes,
-             verticalalignment='top', fontsize=10,
-             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.4),
-             family='monospace')
-    
-      # ========== 3. T_c vs T_max SCATTER (Colored by Ground Truth) ==========
-      ax3 = fig.add_subplot(gs[1, :2])
-    
-      # Separate by ground truth
-      fast_clients = validation_df[~validation_df['ground_truth_straggler']]
-      straggler_clients = validation_df[validation_df['ground_truth_straggler']]
-    
-      # Plot fast clients
-      ax3.scatter(fast_clients['T_c'], fast_clients['actual_duration'],
-                c='green', alpha=0.5, s=50, label='Ground Truth: Fast',
-                edgecolors='black', linewidth=0.5)
-    
-      # Plot stragglers
-      ax3.scatter(straggler_clients['T_c'], straggler_clients['actual_duration'],
-                c='red', alpha=0.5, s=50, label='Ground Truth: Straggler',
-                edgecolors='black', linewidth=0.5, marker='s')
-    
-      # Add T_max line
-      T_max_mean = validation_df['T_max'].mean()
-      ax3.axvline(T_max_mean, color='blue', linestyle='--', linewidth=2,
-                label=f'T_max = {T_max_mean:.2f}s', alpha=0.7)
-      ax3.axhline(T_max_mean, color='blue', linestyle='--', linewidth=2, alpha=0.7)
-    
-      # Shade regions
-      xlim = ax3.get_xlim()
-      ylim = ax3.get_ylim()
-      ax3.fill_between([T_max_mean, xlim[1]], ylim[0], ylim[1], 
-                     alpha=0.1, color='red', label='Predicted Straggler Region')
-    
-      ax3.set_xlabel('T_c (EMA Training Time)', fontsize=12, fontweight='bold')
-      ax3.set_ylabel('Actual Duration (Current Round)', fontsize=12, fontweight='bold')
-      ax3.set_title('EMA vs Actual Duration by Ground Truth Label', fontsize=14, fontweight='bold')
-      ax3.legend(loc='upper left', fontsize=9)
-      ax3.grid(True, alpha=0.3)
-    
-      # ========== 4. ACCURACY OVER ROUNDS ==========
-      ax4 = fig.add_subplot(gs[1, 2:])
-    
-      # Calculate per-round accuracy
-      round_metrics = validation_df.groupby('round').apply(
-        lambda x: pd.Series({
-            'accuracy': accuracy_score(x['ground_truth_straggler'], x['predicted_straggler']),
-            'precision': precision_score(x['ground_truth_straggler'], x['predicted_straggler'], zero_division=0),
-            'recall': recall_score(x['ground_truth_straggler'], x['predicted_straggler'], zero_division=0)
-        })
-    ).reset_index()
-    
-      rounds = round_metrics['round']
-      ax4.plot(rounds, round_metrics['accuracy'], marker='o', linewidth=2, 
-             label='Accuracy', color='steelblue')
-      ax4.plot(rounds, round_metrics['precision'], marker='s', linewidth=2,
-             label='Precision', color='green', alpha=0.7)
-      ax4.plot(rounds, round_metrics['recall'], marker='^', linewidth=2,
-             label='Recall', color='orange', alpha=0.7)
-    
-      ax4.axhline(y=accuracy, color='red', linestyle='--', linewidth=2,
-                label=f'Overall Accuracy: {accuracy:.3f}', alpha=0.5)
-    
-      ax4.set_xlabel('Training Round', fontsize=12, fontweight='bold')
-      ax4.set_ylabel('Score', fontsize=12, fontweight='bold')
-      ax4.set_title('Detection Metrics Over Training', fontsize=14, fontweight='bold')
-      ax4.legend(loc='lower right', fontsize=9)
-      ax4.grid(True, alpha=0.3)
-      ax4.set_ylim([0, 1.05])
-    
-      # ========== 5. ERROR ANALYSIS: MISCLASSIFICATIONS ==========
-      ax5 = fig.add_subplot(gs[2, :2])
-    
-      false_positives = validation_df[
-        validation_df['predicted_straggler'] & ~validation_df['ground_truth_straggler']
-    ]
-      false_negatives = validation_df[
-        ~validation_df['predicted_straggler'] & validation_df['ground_truth_straggler']
-    ]
-    
-      error_data = {
-        'False Positives\n(Fast labeled as Straggler)': len(false_positives),
-        'False Negatives\n(Straggler labeled as Fast)': len(false_negatives),
-        'True Positives\n(Correct Straggler)': len(validation_df[
-            validation_df['predicted_straggler'] & validation_df['ground_truth_straggler']
-        ]),
-        'True Negatives\n(Correct Fast)': len(validation_df[
-            ~validation_df['predicted_straggler'] & ~validation_df['ground_truth_straggler']
-        ])
-    }
-    
-      colors = ['red', 'orange', 'green', 'lightgreen']
-      bars = ax5.bar(error_data.keys(), error_data.values(), color=colors, 
-                   edgecolor='black', alpha=0.7)
-    
-      # Add count labels on bars
-      for bar in bars:
-        height = bar.get_height()
-        ax5.text(bar.get_x() + bar.get_width()/2., height,
-                f'{int(height)}',
-                ha='center', va='bottom', fontweight='bold')
-    
-      ax5.set_ylabel('Count', fontsize=12, fontweight='bold')
-      ax5.set_title('Prediction Distribution', fontsize=14, fontweight='bold')
-      ax5.grid(axis='y', alpha=0.3)
-    
-      # ========== 6. CLIENT-LEVEL ACCURACY ==========
-      ax6 = fig.add_subplot(gs[2, 2:])
-    
-      # Calculate per-client accuracy
-      client_accuracy = validation_df.groupby('client_id').apply(
-        lambda x: (x['predicted_straggler'] == x['ground_truth_straggler']).mean()
-    ).sort_values()
-    
-      # Separate stragglers and fast clients
-      straggler_clients_acc = client_accuracy[client_accuracy.index.isin(ground_truth_stragglers)]
-      fast_clients_acc = client_accuracy[~client_accuracy.index.isin(ground_truth_stragglers)]
-    
-      # Plot
-      x_pos_stragglers = np.arange(len(straggler_clients_acc))
-      x_pos_fast = np.arange(len(straggler_clients_acc), 
-                           len(straggler_clients_acc) + len(fast_clients_acc))
-    
-      ax6.bar(x_pos_stragglers, straggler_clients_acc.values, 
-            color='red', alpha=0.6, label='Stragglers', edgecolor='black')
-      ax6.bar(x_pos_fast, fast_clients_acc.values,
-            color='green', alpha=0.6, label='Fast Clients', edgecolor='black')
-    
-      ax6.axhline(y=1.0, color='blue', linestyle='--', linewidth=1, alpha=0.5)
-      ax6.set_xlabel('Client ID (sorted by accuracy)', fontsize=12, fontweight='bold')
-      ax6.set_ylabel('Classification Accuracy', fontsize=12, fontweight='bold')
-      ax6.set_title('Per-Client Detection Accuracy', fontsize=14, fontweight='bold')
-      ax6.legend(loc='lower right')
-      ax6.grid(axis='y', alpha=0.3)
-      ax6.set_ylim([0, 1.05])
-    
-      plt.savefig(save_path, dpi=300, bbox_inches='tight')
-      print(f"Validation analysis saved to {save_path}")
-      plt.show()
-    
-      # ========== PRINT STATISTICAL SUMMARY ==========
-      print("\n" + "="*70)
-      print("STRAGGLER DETECTION VALIDATION SUMMARY")
-      print("="*70)
-      print(f"Total observations: {len(validation_df)}")
-      print(f"Ground truth stragglers: {len(ground_truth_stragglers)} clients")
-      print(f"Ground truth fast clients: {len(validation_df['client_id'].unique()) - len(ground_truth_stragglers)} clients")
-      print("\n" + "-"*70)
-      print("OVERALL PERFORMANCE:")
-      print("-"*70)
-      print(f"  Accuracy:    {accuracy:.3f} ({accuracy*100:.1f}%)")
-      print(f"  Precision:   {precision:.3f} ({precision*100:.1f}%)")
-      print(f"  Recall:      {recall:.3f} ({recall*100:.1f}%)")
-      print(f"  Specificity: {specificity:.3f} ({specificity*100:.1f}%)")
-      print(f"  F1-Score:    {f1:.3f}")
-      print("\n" + "-"*70)
-      print("ERROR ANALYSIS:")
-      print("-"*70)
-      print(f"  False Positives: {len(false_positives)} (Fast clients wrongly labeled as stragglers)")
-      print(f"  False Negatives: {len(false_negatives)} (Stragglers wrongly labeled as fast)")
-      print("\n" + "-"*70)
-      print("INTERPRETATION:")
-      print("-"*70)
-    
-      if accuracy >= 0.85:
-        print("  ✓ EXCELLENT: T_c > T_max criterion is highly reliable")
-      elif accuracy >= 0.75:
-        print("  ✓ GOOD: T_c > T_max criterion is reasonably reliable")
-      elif accuracy >= 0.65:
-        print("  ⚠ MODERATE: T_c > T_max criterion shows moderate reliability")
-      else:
-        print("  ✗ POOR: T_c > T_max criterion needs improvement")
-    
-      if precision >= 0.80:
-        print("  ✓ Low false positive rate: Fast clients rarely mislabeled")
-      else:
-        print("  ⚠ Significant false positives: Some fast clients mislabeled as stragglers")
-    
-      if recall >= 0.70:
-        print("  ✓ High detection rate: Most stragglers correctly identified")
-      else:
-        print("  ⚠ Missing stragglers: Some stragglers not detected")
-    
-      print("="*70 + "\n")
-    
-      return {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'specificity': specificity,
-        'f1': f1,
-        'confusion_matrix': cm
-    }
-
     def _fedavg_parameters(
         self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
     ) -> List[np.ndarray]:
