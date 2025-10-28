@@ -451,7 +451,7 @@ def main(cfg: DictConfig) -> None:
     analyze_straggler_detection_with_ground_truth(
             validation_df=per_round_df,
             ground_truth_stragglers=ground_truth_stragglers,
-            save_path="results/straggler_validation_detailed.png"
+            save_path="straggler_validation_detailed.png"
         )
         
     print("[2/3] Generating participation visualization...")
