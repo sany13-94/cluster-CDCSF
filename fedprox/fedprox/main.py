@@ -39,6 +39,11 @@ import torch
 import numpy as np
 from typing import List
 from torch.utils.data import DataLoader
+import pandas as pd
+from visualizeprototypes.ClusterVisualizationForConfigureFit import (
+            analyze_straggler_detection_with_ground_truth,
+            visualize_client_participation,
+        )
 strategy="gpaf"
  # Create or get experiment
 experiment_name = "fedgpaf_Fed_FL32"
@@ -431,12 +436,7 @@ def main(cfg: DictConfig) -> None:
     # generate plots using the `history`
     
     save_path = HydraConfig.get().runtime.output_dir
-    import pandas as pd
-    
-    from visualizeprototypes.ClusterVisualizationForConfigureFit import (
-            analyze_straggler_detection_with_ground_truth,
-            visualize_client_participation,
-        )
+   
 
     # Load saved validation data
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
