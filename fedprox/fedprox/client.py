@@ -128,8 +128,13 @@ class FederatedClient(fl.client.NumPyClient):
             simulate_delay = False
             
             print(f"Client {self.client_id} starting fit() for round {round_number}")
-            
-   
+            stragglers = set(config.get("simulate_stragglers", []))
+    
+            # Determine if this client is a persistent straggler
+            simulate_delay = self.client_id in stragglers
+
+            print(f"Client {self.client_id}: simulate_delay={simulate_delay}")
+
             start_time = time.time()
             # On ne le fait que pour la première ronde pour des raisons de performance.
             if round_number == 1 :
@@ -425,12 +430,12 @@ class FederatedClient(fl.client.NumPyClient):
               print(f"Client {client_id} - Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/len(trainloader):.4f}")
         
         # Simulate delay if needed
-        """
         if simulate_delay:
-            import random
-            delay = random.uniform(0.5, 2.0)
-            time.sleep(delay)
-        """
+          import random
+          delay = random.uniform(2.0, 5.0)  # Increase delay for clearer effect
+          print(f"Client {client_id} simulating straggler delay: {delay:.2f}s")
+          time.sleep(delay)
+
 
 
 from hashlib import md5
