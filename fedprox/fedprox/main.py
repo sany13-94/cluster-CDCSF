@@ -41,7 +41,7 @@ from typing import List
 from torch.utils.data import DataLoader
 import pandas as pd
 
-from visualizeprototypes import ClusterVisualizationForConfigureFit
+from fedprox.visualizeprototypes import ClusterVisualizationForConfigureFit
 strategy="gpaf"
  # Create or get experiment
 experiment_name = "fedgpaf_Fed_FL32"
