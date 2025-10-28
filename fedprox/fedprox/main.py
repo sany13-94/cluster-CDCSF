@@ -439,7 +439,7 @@ def main(cfg: DictConfig) -> None:
     # Load saved validation data
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
 
-    per_round_df = pd.read_csv("results/validation_results.csv")
+    per_round_df = pd.read_csv("validation_results.csv")
     final_df = pd.read_csv("client_participation.csv")
     visualizer = ClusterVisualizationForConfigureFit()    
     print("[1/3] Generating straggler detection analysis...")
@@ -452,7 +452,7 @@ def main(cfg: DictConfig) -> None:
     print("[2/3] Generating participation visualization...")
     visualizer.visualize_client_participation(
             strategy.client_participation_count,
-            save_path="results/participation_distribution.png",
+            save_path="participation_distribution.png",
             method_name="FedProto-Fair"
         )
         
