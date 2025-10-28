@@ -433,7 +433,7 @@ def main(cfg: DictConfig) -> None:
     save_path = HydraConfig.get().runtime.output_dir
     import pandas as pd
     
-    from visualizeprototypes import (
+    from visualizeprototypes.ClusterVisualizationForConfigureFit import (
             analyze_straggler_detection_with_ground_truth,
             visualize_client_participation,
         )

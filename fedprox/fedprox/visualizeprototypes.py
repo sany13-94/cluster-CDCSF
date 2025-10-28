@@ -11,9 +11,32 @@ import os
 import pandas as pd
 
 
-#CLIENTS partiticpants visualization and stragglers figure 4
 
-def analyze_straggler_detection_with_ground_truth(validation_df, 
+class ClusterVisualizationForConfigureFit:
+    """
+    t-SNE visualization for EM clustering in your configure_fit function.
+    Integrated directly with your prototype-based clustering approach.
+    """
+    
+    def __init__(self, save_dir: str = "./clustering_visualizations", true_domain_labels: Optional[np.ndarray] = None):
+        """
+        Args:
+            save_dir: Directory to save visualizations
+            true_domain_labels: Ground truth domain labels for each client (optional)
+                                e.g., np.array([0,0,0,0,0,1,1,1,1,1,2,2,2,2,3])
+        """
+        self.save_dir = save_dir
+        os.makedirs(save_dir, exist_ok=True)
+        
+      
+        self.history = []  # Store clustering history for evolution plots
+        
+        # Set style
+        plt.style.use('seaborn-v0_8-darkgrid')
+        self.colors = plt.cm.Set2(np.linspace(0, 1, 10))
+    #CLIENTS partiticpants visualization and stragglers figure 4
+
+    def analyze_straggler_detection_with_ground_truth(validation_df, 
                                                    ground_truth_stragglers,
                                                    save_path="straggler_validation_gt.png"):
       """
@@ -292,7 +315,7 @@ def analyze_straggler_detection_with_ground_truth(validation_df,
         'confusion_matrix': cm
     }
 
-def visualize_client_participation(participation_dict, save_path="participation_chart.png", 
+    def visualize_client_participation(participation_dict, save_path="participation_chart.png", 
                                    method_name="FedProto-Fair"):
       """
       Simple bar chart showing how many times each client participated
@@ -352,29 +375,6 @@ def visualize_client_participation(participation_dict, save_path="participation_
 
 
 
-class ClusterVisualizationForConfigureFit:
-    """
-    t-SNE visualization for EM clustering in your configure_fit function.
-    Integrated directly with your prototype-based clustering approach.
-    """
-    
-    def __init__(self, save_dir: str = "./clustering_visualizations", true_domain_labels: Optional[np.ndarray] = None):
-        """
-        Args:
-            save_dir: Directory to save visualizations
-            true_domain_labels: Ground truth domain labels for each client (optional)
-                                e.g., np.array([0,0,0,0,0,1,1,1,1,1,2,2,2,2,3])
-        """
-        self.save_dir = save_dir
-        os.makedirs(save_dir, exist_ok=True)
-        
-      
-        self.history = []  # Store clustering history for evolution plots
-        
-        # Set style
-        plt.style.use('seaborn-v0_8-darkgrid')
-        self.colors = plt.cm.Set2(np.linspace(0, 1, 10))
-    
     def visualize_clustering_from_prototypes(
         self,
         all_prototypes_list: List[Dict],
