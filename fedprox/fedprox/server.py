@@ -291,7 +291,7 @@ save_dir="feature_visualizations_gpaf"
         self.total_rounds_completed = server_round
 
         # After EMA update, validate predictions
-        self._validate_straggler_predictions(server_round, results)
+        #self._validate_straggler_predictions(server_round, results)
         
         print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
         print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
