@@ -40,10 +40,8 @@ import numpy as np
 from typing import List
 from torch.utils.data import DataLoader
 import pandas as pd
-from visualizeprototypes.ClusterVisualizationForConfigureFit import (
-            analyze_straggler_detection_with_ground_truth,
-            visualize_client_participation,
-        )
+
+from visualizeprototypes import ClusterVisualizationForConfigureFit
 strategy="gpaf"
  # Create or get experiment
 experiment_name = "fedgpaf_Fed_FL32"
@@ -436,23 +434,23 @@ def main(cfg: DictConfig) -> None:
     # generate plots using the `history`
     
     save_path = HydraConfig.get().runtime.output_dir
-   
+    
 
     # Load saved validation data
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
 
     per_round_df = pd.read_csv("results/validation_results.csv")
     final_df = pd.read_csv("client_participation.csv")
-        
+    visualizer = ClusterVisualizationForConfigureFit()    
     print("[1/3] Generating straggler detection analysis...")
-    analyze_straggler_detection_with_ground_truth(
+    visualizer.analyze_straggler_detection_with_ground_truth(
             validation_df=per_round_df,
             ground_truth_stragglers=ground_truth_stragglers,
             save_path="straggler_validation_detailed.png"
         )
         
     print("[2/3] Generating participation visualization...")
-    visualize_client_participation(
+    visualizer.visualize_client_participation(
             strategy.client_participation_count,
             save_path="results/participation_distribution.png",
             method_name="FedProto-Fair"
