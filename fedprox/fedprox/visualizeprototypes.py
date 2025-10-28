@@ -315,64 +315,7 @@ class ClusterVisualizationForConfigureFit:
         'confusion_matrix': cm
     }
 
-    def visualize_client_participation(self, participation_dict, save_path="participation_chart.png", 
-                                   method_name="FedProto-Fair"):
-      """
-      Simple bar chart showing how many times each client participated
     
-      Args:
-        participation_dict: Dictionary {client_id: count}
-        save_path: Where to save the plot
-        method_name: Name of your method for the title
-      """
-   
-    
-      # Sort clients by participation count
-      sorted_items = sorted(participation_dict.items(), key=lambda x: int(x[0].split('_')[1]))
-      client_ids = [item[0] for item in sorted_items]
-      counts = [item[1] for item in sorted_items]
-    
-      # Create figure
-      fig, ax = plt.subplots(figsize=(14, 6))
-    
-      # Create bar chart
-      bars = ax.bar(range(len(client_ids)), counts, color='steelblue', edgecolor='black', alpha=0.7)
-    
-      # Highlight clients with 0 participation in red
-      for i, count in enumerate(counts):
-        if count == 0:
-            bars[i].set_color('red')
-            bars[i].set_alpha(0.5)
-    
-      # Customize plot
-      ax.set_xlabel('Client ID', fontsize=12, fontweight='bold')
-      ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
-      ax.set_title(f'Client Participation Distribution - {method_name}', 
-                 fontsize=14, fontweight='bold')
-      ax.set_xticks(range(len(client_ids)))
-      ax.set_xticklabels(client_ids, rotation=45, ha='right')
-      ax.grid(axis='y', alpha=0.3, linestyle='--')
-    
-      # Add statistics text
-      total_clients = len(client_ids)
-      participated = sum(1 for c in counts if c > 0)
-      avg_participation = np.mean(counts)
-      std_participation = np.std(counts)
-    
-      stats_text = f'Total Clients: {total_clients}\n'
-      stats_text += f'Participated: {participated} ({participated/total_clients*100:.1f}%)\n'
-      stats_text += f'Avg Participation: {avg_participation:.2f} ± {std_participation:.2f}'
-    
-      ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-            verticalalignment='top', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-            fontsize=10)
-    
-      plt.tight_layout()
-      plt.savefig(save_path, dpi=300, bbox_inches='tight')
-      print(f"Visualization saved to {save_path}")
-      plt.show()
-
 
 
     def visualize_clustering_from_prototypes(
