@@ -371,7 +371,7 @@ save_dir="feature_visualizations_gpaf"
     def _save_all_results(self):
         """Save all tracking data"""
         import os
-        
+        self.output_dir="client_participations"
         print("[Hook] Saving results...")
         
         participation_file = os.path.join(self.output_dir, "client_participation.csv")
