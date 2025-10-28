@@ -325,9 +325,9 @@ def get_server_fn(mlflow=None):
       strategyi = FedAVGWithEval(
       fraction_fit=1.0,  # Train with 50% of available clients
       fraction_evaluate=1,  # Evaluate with all available clients
-      min_fit_clients=6,
-      min_evaluate_clients=6,
-      min_available_clients=6,
+      min_fit_clients=4,
+      min_evaluate_clients=4,
+      min_available_clients=4,
       evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,  # Add this
 
       on_evaluate_config_fn=get_on_evaluate_config_fn(),

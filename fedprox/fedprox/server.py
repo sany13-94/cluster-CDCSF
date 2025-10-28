@@ -171,7 +171,7 @@ class GPAFStrategy(FedAvg):
         self.initial_alpha1 = initial_alpha1
         self.initial_alpha2 = initial_alpha2
         self.phase_threshold = phase_threshold
-        self.total_rounds = total_rounds
+        #self.total_rounds = total_rounds
         
         print(f"[Init] Strategy initialized with α={ema_alpha}, β={beta}")
 
