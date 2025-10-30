@@ -324,6 +324,15 @@ save_dir="feature_visualizations_gpaf"
         return ndarrays_to_parameters(aggregated_params), {}
 
 
+    def save_client_mapping(self):
+
+      df = pd.DataFrame([
+    {"flower_uuid": uuid, "client_cid": cid}
+    for uuid, cid in self.uuid_to_cid.items()
+])
+
+      df.to_csv("client_id_mapping.csv", index=False)
+      print(df)
 
     def _save_all_results(self):
       
@@ -1471,7 +1480,6 @@ save_dir="feature_visualizations_gpaf"
     
       print(f"[E-step] Distribution: {dict(cluster_counts)}")
       return assignments
-
 
     def _cosine_distance(self, a, b):
       """Compute 1 - cosine similarity"""
