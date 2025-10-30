@@ -219,23 +219,7 @@ def make_pathmnist_clients_with_domains(
     seed: int = 42,
     save_samples: bool = True
 ):
-    """
-    Create k clients grouped into d domains.
-    - k-1 clients from train split, distributed across d domains
-    - 1 client from test split (becomes test domain, unshifted)
-    
-    Args:
-        k: Total number of clients
-        d: Number of training domains
-        batch_size: Batch size for data loaders
-        val_ratio: Validation split ratio
-        seed: Random seed for reproducibility
-        save_samples: Whether to save sample images per domain
-    
-    Returns:
-        train_loaders: List of k training DataLoaders
-        val_loaders: List of k validation DataLoaders
-    """
+  
     
     augmentation_transform = build_augmentation_transform()
     

@@ -255,11 +255,19 @@ save_dir="feature_visualizations_gpaf"
         num_samples_list = []
         current_round_durations = []
         current_participants = set()
+        # Create mapping dict if first time
+        if not hasattr(self, "uuid_to_cid"):
+          self.uuid_to_cid = {}
 
         # Process results and update tracking
         for client_proxy, fit_res in results:
             client_id = client_proxy.cid
             metrics = fit_res.metrics
+            uuid = client_proxy.cid  # Flower internal UUID
+            cid = fit_res.metrics.get("cid")  # ✅ local client ID sent from client
+
+        if cid is not None:
+            self.uuid_to_cid[uuid] = cid
             
             self.participated_clients.add(client_id)
             current_participants.add(client_id)
@@ -783,64 +791,58 @@ save_dir="feature_visualizations_gpaf"
             
         except Exception as e:
             print(f"Error computing metrics: {e}")
-
     def visualize_client_participation(self, participation_dict, save_path="participation_chart.png", 
                                    method_name="FedProto-Fair"):
-      """
-      Simple bar chart showing how many times each client participated
-    
-      Args:
-        participation_dict: Dictionary {client_id: count}
-        save_path: Where to save the plot
-        method_name: Name of your method for the title
-      """
-   
-    
-      # Sort clients by participation count
-      sorted_items = sorted(participation_dict.items(), key=lambda x: int(x[0].split('_')[1]))
-      client_ids = [item[0] for item in sorted_items]
+
+      # ✅ Load UUID → cid mapping
+      mapping_df = pd.read_csv("client_id_mapping.csv")
+      uuid_to_cid = dict(zip(mapping_df["flower_uuid"].astype(str),
+                           mapping_df["client_cid"].astype(str)))
+
+      # ✅ Convert participation_dict keys using mapping
+      mapped_dict = {}
+      for uuid, count in participation_dict.items():
+        uuid_str = str(uuid)
+        cid = uuid_to_cid.get(uuid_str, f"UNK-{uuid}")  # fallback: unknown
+        mapped_dict[cid] = count
+
+      # ✅ Sort clients by numeric cid
+      sorted_items = sorted(mapped_dict.items(), key=lambda x: int(x[0]))
+      client_ids = [f"Client {item[0]}" for item in sorted_items]
       counts = [item[1] for item in sorted_items]
-    
-      # Create figure
+
+      # ✅ Plot exactly same as before (using client_ids now)
       fig, ax = plt.subplots(figsize=(14, 6))
-    
-      # Create bar chart
-      bars = ax.bar(range(len(client_ids)), counts, color='steelblue', edgecolor='black', alpha=0.7)
-    
-      # Highlight clients with 0 participation in red
+      bars = ax.bar(range(len(client_ids)), counts)
+
       for i, count in enumerate(counts):
         if count == 0:
             bars[i].set_color('red')
             bars[i].set_alpha(0.5)
-    
-      # Customize plot
+
       ax.set_xlabel('Client ID', fontsize=12, fontweight='bold')
       ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
-      ax.set_title(f'Client Participation Distribution - {method_name}', 
-                 fontsize=14, fontweight='bold')
+      ax.set_title(f'Client Participation Distribution - {method_name}', fontsize=14, fontweight='bold')
       ax.set_xticks(range(len(client_ids)))
       ax.set_xticklabels(client_ids, rotation=45, ha='right')
       ax.grid(axis='y', alpha=0.3, linestyle='--')
-    
-      # Add statistics text
+
       total_clients = len(client_ids)
       participated = sum(1 for c in counts if c > 0)
       avg_participation = np.mean(counts)
       std_participation = np.std(counts)
-    
-      stats_text = f'Total Clients: {total_clients}\n'
-      stats_text += f'Participated: {participated} ({participated/total_clients*100:.1f}%)\n'
-      stats_text += f'Avg Participation: {avg_participation:.2f} ± {std_participation:.2f}'
-    
+
+      stats_text = f"Total Clients: {total_clients}\nParticipated: {participated} ({participated/total_clients*100:.1f}%)\nAvg Participation: {avg_participation:.2f} ± {std_participation:.2f}"
       ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
             verticalalignment='top', horizontalalignment='right',
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
             fontsize=10)
-    
+
       plt.tight_layout()
       plt.savefig(save_path, dpi=300, bbox_inches='tight')
       print(f"Visualization saved to {save_path}")
       plt.show()
+
 
     def configure_fit(
     self, 
