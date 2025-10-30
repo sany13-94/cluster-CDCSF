@@ -52,9 +52,10 @@ class FederatedClient(fl.client.NumPyClient):
       mlflow,
       run_id,
       
-            device):
+            device,
+            context=None):
         self.net = net
-   
+        self.context = context  # Flower runtime context
         self.traindata = data
         self.validdata=validset
         self.device = device
@@ -220,11 +221,14 @@ class FederatedClient(fl.client.NumPyClient):
                     class_counts_encoded = base64.b64encode(class_counts_bytes).decode('utf-8')
                     
                     print(f"Client {self.client_id} - Successfully encoded prototypes ({len(prototypes_bytes)} bytes)")
-                    
+                    node_id = self.context.node_id
                     return {
                       #"domain_id": str(self.traindata.dataset.domain_id),
                         "prototypes": prototypes_encoded,
                         "class_counts": class_counts_encoded,
+                                    "client_cid": self.client_id,           # your logical ID
+            "flower_node_id": str(node_id),   # stringify for CSV safety
+
                     }
                     
                 except Exception as e:
@@ -517,7 +521,8 @@ cfg=None  ,
             mlflow
             ,
             run_id,
-            device
+            device,
+            context
 
           )
       return numpy_client.to_client()

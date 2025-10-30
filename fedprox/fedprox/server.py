@@ -34,6 +34,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 import json
+from pathlib import Path
 from flwr.server.strategy import Strategy,FedAvg
 from fedprox.models import test,test_gpaf 
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
@@ -99,7 +100,9 @@ class GPAFStrategy(FedAvg):
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
-        
+        map_path="client_id_mapping1.csv"
+        self.map_path = Path(map_path)
+        self._map_written = False
         
         # CSMDA Client Selection Parameters (UPDATED)
         self.training_times = defaultdict(float)
@@ -234,6 +237,49 @@ save_dir="feature_visualizations_gpaf"
       return max(int(num_clients * self.fraction_evaluate), self.min_evaluate_clients), self.min_available_clients
     
     
+    def _write_csv(self, rows: List[Dict[str, Any]]) -> None:
+        # minimal dependency version: pure csv write/append
+        import csv
+        header = ["server_cid", "client_cid", "flower_node_id"]
+
+        if not self.map_path.exists():
+            with self.map_path.open("w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=header)
+                w.writeheader()
+                for r in rows:
+                    w.writerow(r)
+        else:
+            # de-duplicate against existing file (optional, nice-to-have)
+            try:
+                import pandas as pd
+                old = pd.read_csv(self.map_path, dtype=str)
+                new = pd.DataFrame(rows, columns=header).astype(str)
+                out = (
+                    pd.concat([old, new], ignore_index=True)
+                      .drop_duplicates(subset=header, keep="first")
+                )
+                out.to_csv(self.map_path, index=False)
+            except Exception:
+                # fallback: append blindly
+                with self.map_path.open("a", newline="") as f:
+                    w = csv.DictWriter(f, fieldnames=header)
+                    for r in rows:
+                        w.writerow(r)
+
+    def _collect_and_persist_map(self, client_manager: fl.server.ClientManager) -> None:
+        # Query every connected client once
+        rows: List[Dict[str, Any]] = []
+        for cp in client_manager.all().values():   # ClientProxy objects
+            props = cp.get_properties(config={})   # calls client.get_properties
+            rows.append({
+                "server_cid": cp.cid,                              # server-side connection id
+                "client_cid": str(int(props["client_cid"])),       # normalize
+                "flower_node_id": str(props["flower_node_id"]),
+            })
+        if rows:
+            self._write_csv(rows)
+            self._map_written = True
+            print(f"[Server] Wrote mapping for {len(rows)} client(s) to {self.map_path.resolve()}")
 
     def aggregate_fit(
         self,
