@@ -315,8 +315,9 @@ save_dir="feature_visualizations_gpaf"
         
         # Perform FedAvg aggregation
         aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
-
+        
         if server_round == self.total_rounds :
+            self.save_client_mapping()
             print("\n" + "="*80)
             print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
             print("="*80)
@@ -332,6 +333,8 @@ save_dir="feature_visualizations_gpaf"
 ])
 
       df.to_csv("client_id_mapping.csv", index=False)
+      print("Saved mapping at:")
+
       print(df)
 
     def _save_all_results(self):
@@ -800,6 +803,7 @@ save_dir="feature_visualizations_gpaf"
             
         except Exception as e:
             print(f"Error computing metrics: {e}")
+    
     def visualize_client_participation(self, participation_dict, save_path="participation_chart.png", 
                                    method_name="FedProto-Fair"):
 
