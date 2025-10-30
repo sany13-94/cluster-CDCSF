@@ -236,54 +236,10 @@ save_dir="feature_visualizations_gpaf"
       num_clients = client_manager.num_available()
       return max(int(num_clients * self.fraction_evaluate), self.min_evaluate_clients), self.min_available_clients
     
-    
-    def _write_csv(self, rows) -> None:
-        # minimal dependency version: pure csv write/append
-        import csv
-        header = ["server_cid", "client_cid", "flower_node_id"]
-
-        if not self.map_path.exists():
-            with self.map_path.open("w", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=header)
-                w.writeheader()
-                for r in rows:
-                    w.writerow(r)
-        else:
-            # de-duplicate against existing file (optional, nice-to-have)
-            try:
-                import pandas as pd
-                old = pd.read_csv(self.map_path, dtype=str)
-                new = pd.DataFrame(rows, columns=header).astype(str)
-                out = (
-                    pd.concat([old, new], ignore_index=True)
-                      .drop_duplicates(subset=header, keep="first")
-                )
-                out.to_csv(self.map_path, index=False)
-            except Exception:
-                # fallback: append blindly
-                with self.map_path.open("a", newline="") as f:
-                    w = csv.DictWriter(f, fieldnames=header)
-                    for r in rows:
-                        w.writerow(r)
-
-    def _collect_and_persist_map(self, client_manager: flwr.server.ClientManager) -> None:
-        rows = []
-
-        ins = GetPropertiesIns(config={})
-
-        for cp in client_manager.all().values():   # GridClientProxy
-            # ✅ Grid needs (ins, timeout, group_id)
-            res = cp.get_properties(ins, 10.0, cp.group_id)
-            props = res.properties or {}
-            rows.append({
-                "server_cid": cp.cid,
-                "client_cid": str(int(props.get("client_cid", -1))),
-                "flower_node_id": str(props.get("flower_node_id", "")),
-            })
-
+   
+    def _append_rows(self, rows: List[dict]) -> None:
         if not rows:
             return
-
         header = ["server_cid", "client_cid", "flower_node_id"]
         write_header = not self.map_path.exists()
         with self.map_path.open("a", newline="") as f:
@@ -291,8 +247,6 @@ save_dir="feature_visualizations_gpaf"
             if write_header:
                 w.writeheader()
             w.writerows(rows)
-        self._wrote = True
-        print(f"[Server] Mapping saved to {self.map_path.resolve()}")
     def aggregate_fit(
         self,
         server_round: int,
@@ -313,6 +267,8 @@ save_dir="feature_visualizations_gpaf"
         num_samples_list = []
         current_round_durations = []
         current_participants = set()
+        new_rows: List[dict] = []
+
         # Create mapping dict if first time
         if not hasattr(self, "uuid_to_cid"):
           self.uuid_to_cid = {}
@@ -323,6 +279,23 @@ save_dir="feature_visualizations_gpaf"
             metrics = fit_res.metrics
             uuid = client_proxy.cid  # Flower internal UUID
             cid = fit_res.metrics.get("cid")  # ✅ local client ID sent from client
+            
+            cid = metrics.get("client_cid")
+            node = metrics.get("flower_node_id")
+            if cid is None or node is None:
+                continue
+            key = (str(int(cid)), str(node))
+            if key not in self._seen:
+                self._seen.add(key)
+                new_rows.append({
+                    "server_cid": client_proxy.cid,        # connection id for reference
+                    "client_cid": key[0],
+                    "flower_node_id": key[1],
+                })
+        self._append_rows(new_rows)
+        if new_rows:
+            print(f"[Server] Recorded {len(new_rows)} new client(s). Total unique: {len(self._seen)}")
+
 
         if cid is not None:
             self.uuid_to_cid[uuid] = cid

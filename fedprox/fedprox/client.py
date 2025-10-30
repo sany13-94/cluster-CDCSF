@@ -177,7 +177,8 @@ class FederatedClient(fl.client.NumPyClient):
             return  (self.get_parameters(), num_examples, {
                 "data_size": num_examples,
                 "duration": training_duration,
-                "cid": self.client_id  # ✅ send local client id to server
+                     "client_cid": self.client_id,           # your logical ID
+            "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
             })
            
           
@@ -227,7 +228,7 @@ class FederatedClient(fl.client.NumPyClient):
                         "prototypes": prototypes_encoded,
                         "class_counts": class_counts_encoded,
                                     "client_cid": self.client_id,           # your logical ID
-            "flower_node_id": str(node_id),   # stringify for CSV safety
+            "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
 
                     }
                     
