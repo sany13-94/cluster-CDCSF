@@ -266,7 +266,7 @@ save_dir="feature_visualizations_gpaf"
                     for r in rows:
                         w.writerow(r)
 
-    def _collect_and_persist_map(self, client_manager: fl.server.ClientManager) -> None:
+    def _collect_and_persist_map(self, client_manager: flwr.server.ClientManager) -> None:
         # Query every connected client once
         rows: List[Dict[str, Any]] = []
         for cp in client_manager.all().values():   # ClientProxy objects
