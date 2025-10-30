@@ -267,17 +267,33 @@ save_dir="feature_visualizations_gpaf"
                         w.writerow(r)
 
     def _collect_and_persist_map(self, client_manager: flwr.server.ClientManager) -> None:
-        # Query every connected client once
-        rows: List[Dict[str, Any]] = []
-        for cp in client_manager.all().values():   # ClientProxy objects
-            props = cp.get_properties(config={})   # calls client.get_properties
+        rows = []
+
+        # Build the "ins" once (you can pass values via the dict if you want)
+        ins = GetPropertiesIns(config={})
+
+        for cp in client_manager.all().values():  # ClientProxy/GridClientProxy
+            # ⬇️ Correct call signature in v1.22:
+            res = cp.get_properties(ins)  # (optionally: cp.get_properties(ins, timeout=10.0))
+
+            # res is GetPropertiesRes; the dict is in res.properties
+            props = res.properties or {}
             rows.append({
-                "server_cid": cp.cid,                              # server-side connection id
-                "client_cid": str(int(props["client_cid"])),       # normalize
-                "flower_node_id": str(props["flower_node_id"]),
+                "server_cid": cp.cid,
+                "client_cid": str(int(props.get("client_cid", -1))),
+                "flower_node_id": str(props.get("flower_node_id", "")),
             })
+
         if rows:
-            self._write_csv(rows)
+            header = ["server_cid", "client_cid", "flower_node_id"]
+            write_header = not self.map_path.exists()
+            with self.map_path.open("a", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=header)
+                if write_header:
+                    w.writeheader()
+                for r in rows:
+                    w.writerow(r)
+
             self._map_written = True
             print(f"[Server] Wrote mapping for {len(rows)} client(s) to {self.map_path.resolve()}")
 
