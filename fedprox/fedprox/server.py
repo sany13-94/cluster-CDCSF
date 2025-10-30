@@ -269,14 +269,11 @@ save_dir="feature_visualizations_gpaf"
     def _collect_and_persist_map(self, client_manager: flwr.server.ClientManager) -> None:
         rows = []
 
-        # Build the "ins" once (you can pass values via the dict if you want)
         ins = GetPropertiesIns(config={})
 
-        for cp in client_manager.all().values():  # ClientProxy/GridClientProxy
-            # ⬇️ Correct call signature in v1.22:
-            res = cp.get_properties(ins)  # (optionally: cp.get_properties(ins, timeout=10.0))
-
-            # res is GetPropertiesRes; the dict is in res.properties
+        for cp in client_manager.all().values():   # GridClientProxy
+            # ✅ Grid needs (ins, timeout, group_id)
+            res = cp.get_properties(ins, 10.0, cp.group_id)
             props = res.properties or {}
             rows.append({
                 "server_cid": cp.cid,
@@ -284,19 +281,18 @@ save_dir="feature_visualizations_gpaf"
                 "flower_node_id": str(props.get("flower_node_id", "")),
             })
 
-        if rows:
-            header = ["server_cid", "client_cid", "flower_node_id"]
-            write_header = not self.map_path.exists()
-            with self.map_path.open("a", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=header)
-                if write_header:
-                    w.writeheader()
-                for r in rows:
-                    w.writerow(r)
+        if not rows:
+            return
 
-            self._map_written = True
-            print(f"[Server] Wrote mapping for {len(rows)} client(s) to {self.map_path.resolve()}")
-
+        header = ["server_cid", "client_cid", "flower_node_id"]
+        write_header = not self.map_path.exists()
+        with self.map_path.open("a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=header)
+            if write_header:
+                w.writeheader()
+            w.writerows(rows)
+        self._wrote = True
+        print(f"[Server] Mapping saved to {self.map_path.resolve()}")
     def aggregate_fit(
         self,
         server_round: int,
