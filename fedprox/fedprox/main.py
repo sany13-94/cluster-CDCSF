@@ -348,7 +348,7 @@ def get_server_fn(mlflow=None):
         min_evaluate_clients=4,
         min_available_clients=4,
          ground_truth_stragglers=ground_truth_stragglers,
- total_rounds = 20,     
+ total_rounds = 2,     
       )
 
     # Configure the server for 5 rounds of training
@@ -449,13 +449,7 @@ def main(cfg: DictConfig) -> None:
             save_path="straggler_validation_detailed.png"
         )
         
-    print("[2/3] Generating participation visualization...")
-    visualizer.visualize_client_participation(
-            strategy.client_participation_count,
-            save_path="participation_distribution.png",
-            method_name="FedProto-Fair"
-        )
-        
+   
 
     #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
