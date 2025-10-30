@@ -352,7 +352,7 @@ def get_server_fn(mlflow=None):
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=20)
+    config = ServerConfig(num_rounds=2)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
