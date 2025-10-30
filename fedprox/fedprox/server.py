@@ -237,7 +237,7 @@ save_dir="feature_visualizations_gpaf"
       return max(int(num_clients * self.fraction_evaluate), self.min_evaluate_clients), self.min_available_clients
     
     
-    def _write_csv(self, rows: List[Dict[str, Any]]) -> None:
+    def _write_csv(self, rows) -> None:
         # minimal dependency version: pure csv write/append
         import csv
         header = ["server_cid", "client_cid", "flower_node_id"]
