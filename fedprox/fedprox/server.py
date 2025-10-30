@@ -1257,9 +1257,6 @@ save_dir="feature_visualizations_gpaf"
     
       print(f"{'='*80}\n")
 
-      # Collect on the first round (clients are connected by then)
-      if server_round == 1 and not self._map_written:
-            self._collect_and_persist_map(client_manager)
 
       return instructions
 
