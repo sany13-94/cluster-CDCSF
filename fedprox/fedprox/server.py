@@ -849,7 +849,7 @@ class GPAFStrategy(FedAvg):
 
       # ✅ Load UUID → cid mapping
       mapping_df = pd.read_csv("client_id_mapping.csv")
-      uuid_to_cid = dict(zip(mapping_df["flower_uuid"].astype(str),
+      uuid_to_cid = dict(zip(mapping_df["flower_node_id"].astype(str),
                            mapping_df["client_cid"].astype(str)))
 
       # ✅ Convert participation_dict keys using mapping
@@ -857,6 +857,7 @@ class GPAFStrategy(FedAvg):
       for uuid, count in participation_dict.items():
         uuid_str = str(uuid)
         cid = uuid_to_cid.get(uuid_str, f"UNK-{uuid}")  # fallback: unknown
+        print('======{cid}====')
         mapped_dict[cid] = count
 
       # ✅ Sort clients by numeric cid
