@@ -263,7 +263,7 @@ class GPAFStrategy(FedAvg):
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
         """
-        Aggregate model updates and update client statistics
+        Aggregate model updates and updat
         """
         if failures:
             print(f"[Round {server_round}] Failures: {len(failures)}")
