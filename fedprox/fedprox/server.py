@@ -848,7 +848,7 @@ class GPAFStrategy(FedAvg):
                                    method_name="FedProto-Fair"):
 
       # ✅ Load UUID → cid mapping
-      mapping_df = pd.read_csv("client_id_mapping.csv")
+      mapping_df = pd.read_csv("client_id_mapping1.csv")
       uuid_to_cid = dict(zip(mapping_df["flower_node_id"].astype(str),
                            mapping_df["client_cid"].astype(str)))
 
