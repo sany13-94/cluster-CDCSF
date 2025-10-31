@@ -101,7 +101,7 @@ class GPAFStrategy(FedAvg):
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
         map_path="client_id_mapping1.csv"
-        self.map_path = Path(map_path)
+        
         self._map_written = False
         
         # CSMDA Client Selection Parameters (UPDATED)
@@ -224,12 +224,21 @@ class GPAFStrategy(FedAvg):
         self.label_probs = {label: 1.0 / self.num_classes for label in range(self.num_classes)}
         # Store client models for ensemble predictions
         self.client_classifiers = {}
-        self.feature_visualizer =StructuredFeatureVisualizer(
-        num_clients=2,  # total number of clients
-        num_classes=self.num_classes,           # number of classes in your dataset
+        self.map_path = Path(map_path)
+        expected_unique=self.min_fit_clients
+        self.expected_unique = expected_unique
+        # Track what we've already recorded: (client_cid, flower_node_id)
+        self._seen= set()
 
-save_dir="feature_visualizations_gpaf"
-         )
+        # If the CSV already exists, preload seen pairs (so we don't duplicate)
+        if self.map_path.exists():
+            try:
+                import pandas as pd
+                df = pd.read_csv(self.map_path, dtype=str)
+                for _, r in df.iterrows():
+                    self._seen.add((str(r["client_cid"]), str(r["flower_node_id"])))
+            except Exception:
+                pass  # if reading fails, start fresh in memory
          
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
       """Return the sample size and required number of clients for evaluation."""
