@@ -290,12 +290,20 @@ def make_pathmnist_clients_with_domains(
         augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, client_id,domain_id,augmentation_transform)
         
         train_loaders.append(
-            DataLoader(augmented_trn_ds, batch_size=batch_size, shuffle=False, 
-                      pin_memory=True, num_workers=4)
+            DataLoader(augmented_trn_ds, batch_size=batch_size,
+                        shuffle=True,
+    num_workers=0,         
+    pin_memory=True,
+    persistent_workers=False,
+    prefetch_factor=2
+                      )
         )
+
         val_loaders.append(
-            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=False, 
-                      pin_memory=True, num_workers=4)
+            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=True, 
+                        pin_memory=True,
+    persistent_workers=False,
+    prefetch_factor=2)
         )
 
     
@@ -316,12 +324,18 @@ def make_pathmnist_clients_with_domains(
     augmented_trn_test_ds = AugmentationWrapper(trn_test_base, num_train_clients,3,augmentation_transform)
    
     train_loaders.append(
-        DataLoader(augmented_trn_test_ds, batch_size=batch_size, shuffle=False, 
-                  pin_memory=True, num_workers=4)
+        DataLoader(augmented_trn_test_ds, batch_size=batch_size,    shuffle=True,
+    num_workers=0,         
+    pin_memory=True,
+    persistent_workers=False,
+    prefetch_factor=2)
     )
     val_loaders.append(
-        DataLoader(val_test_base, batch_size=batch_size, shuffle=False, 
-                  pin_memory=True, num_workers=4)
+        DataLoader(val_test_base, batch_size=batch_size   ,    shuffle=True,
+    num_workers=0,         
+    pin_memory=True,
+    persistent_workers=False,
+    prefetch_factor=2)
     )
 
     print(f"\n[SUMMARY]")

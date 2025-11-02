@@ -10,6 +10,13 @@ import copy
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
+# ==== imports & setup ====
+import os, gc, glob
+import csv
+import torch
+from torch.cuda.amp import autocast, GradScaler
+
+import math
 import torch.nn.functional as F
 from flwr.common.typing import NDArrays, Scalar
 from hydra.utils import instantiate
@@ -88,6 +95,16 @@ class FederatedClient(fl.client.NumPyClient):
         
         # Load existing prototypes if available
         self._load_prototypes_from_disk()
+        self.CKPT_DIR = "/kaggle/working/cluster-CDCSF/fedprox/ckpts"
+
+        # Optional: if you added your previous run's "Notebook Output" via Add Data,
+        # set this path to that dataset so we can resume across versions automatically.
+        # Example: "/kaggle/input/your-notebook-name/ckpts"
+        self.PERSIST_INPUT = os.environ.get("KAGGLE_PERSIST_INPUT", "").strip()  # or hardcode the path
+        self.SAVE_EVERY_STEPS  = 2000   # checkpoint cadence (increase if IO is heavy)
+        self.KEEP_LAST         = 3      # keep only last N checkpoints
+        self.PRINT_EVERY_STEPS = 100
+        os.makedirs(self.CKPT_DIR, exist_ok=True)
         
     def set_parameters(self, parameters):
         """Set model parameters from a list of NumPy arrays."""
@@ -371,16 +388,81 @@ class FederatedClient(fl.client.NumPyClient):
             self.class_counts_from_last_round = None
 
     
+    
+
+ 
+
+
+
+    # ------------------ Helpers ------------------
+    def latest_ckpt_in(self,path):
+      files = sorted(glob.glob(os.path.join(path, "*.pt")))
+      return files[-1] if files else None
+
+    def latest_ckpt(self):
+      # prefer fresh local ckpt; else fall back to prior version output (if provided)
+      ckpt = self.latest_ckpt_in(self.CKPT_DIR)
+      if ckpt:
+        return ckpt
+      if self.PERSIST_INPUT and os.path.exists(self.PERSIST_INPUT):
+        return self.latest_ckpt_in(self.PERSIST_INPUT)
+      return None
+
+    def save_ckpt(self,epoch, step, model, optimizer, scaler=None, extra=None):
+      state = {
+        "epoch": int(epoch),
+        "step": int(step),
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "scaler": scaler.state_dict() if scaler is not None else None,
+        "extra": extra or {},
+    }
+      path = f"{self.CKPT_DIR}/e{epoch:03d}_s{step:08d}.pt"
+      torch.save(state, path)
+
+      # rotate old checkpoints (keep only last N)
+      all_ckpts = sorted(glob.glob(os.path.join(self.CKPT_DIR, "*.pt")))
+      for p in all_ckpts[:-self.KEEP_LAST]:
+        try: os.remove(p)
+        except: pass
+      return path
+
+    def resume_if_any(self,model, optimizer=None, scaler=None, map_location="cpu"):
+      ckpt = self.latest_ckpt()
+      if not ckpt:
+        return 0, 0
+      state = torch.load(ckpt, map_location=map_location)
+      model.load_state_dict(state["model"])
+      if optimizer is not None and "optimizer" in state:
+        optimizer.load_state_dict(state["optimizer"])
+      if scaler is not None and state.get("scaler"):
+        scaler.load_state_dict(state["scaler"])
+      start_epoch = int(state.get("epoch", 0))
+      start_step  = int(state.get("step", 0))
+      print(f"[RESUME] from {ckpt} (epoch={start_epoch}, step={start_step})")
+      return start_epoch, start_step
+
+    def tidy(self):
+      gc.collect()
+      if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     def train(self, net, trainloader, client_id, epochs, simulate_delay=False):
         """Train the network on the training set."""
 
-        
         criterion = torch.nn.CrossEntropyLoss()
-
         optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9)
         num_classes=9
         #net.to(self.device)
         net.train()
+        scaler = torch.cuda.amp.GradScaler(enabled=True)
+        start_epoch, start_step, _ = self.resume_if_any(net, optimizer, scaler, map_location="cpu")    
+        global_step = start_step
+        SAVE_EVERY_STEPS   = 2000   # keep this fairly large
+        PRINT_EVERY_STEPS  = 100
+        KEEP_LAST          = 3      # rotate checkpoints
+        MAX_STEPS          = int(1e9)  # effectively "no cap"; epochs control duration
+        amp_enabled=True
         # Metrics (binary classification)
         accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(self.device)
         precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
@@ -405,42 +487,68 @@ class FederatedClient(fl.client.NumPyClient):
             f1_score.reset()
             correct, total, epoch_loss ,loss_sumi ,loss_sum = 0, 0, 0.0 , 0 , 0
             for batch_idx, (images, labels) in enumerate(trainloader):
-                images = images.to(self.device)
-                labels = labels.to(self.device)
+                images = images.to(self.device, non_blocking=True)
+                labels = labels.to(self.device, non_blocking=True)
+
+                optimizer.zero_grad(set_to_none=True)
+
+                # ---- Mixed-precision forward & loss ----
+                with autocast(enabled=amp_enabled):
+                  h, _, outputs = net(images)                 # adapt if your net returns differently
+                  loss = criterion(outputs, labels)
                 
-                optimizer.zero_grad()
-                
-                # Forward pass - adjust based on your network output
-                h, _, outputs =  net(images)
-                loss = criterion(outputs, labels)
-                
-                loss.backward()
-                optimizer.step()
-                
-                epoch_loss += loss.item() * images.size(0)
+                # ---- Scaled backward + optimizer step ----
+                scaler.scale(loss).backward()
+                # (Optional) gradient clipping:
+                # scaler.unscale_(optimizer); torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+
+                # ---- Bookkeeping ----
+                bs = images.size(0)
+                epoch_loss += float(loss.detach().cpu().item()) * bs
+
                 preds = torch.argmax(outputs, dim=1)
                 accuracy.update(preds, labels)
                 precision.update(preds, labels)
                 recall.update(preds, labels)
-                f1_score.update(preds, labels) 
-                # Compute accuracy
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                f1_score.update(preds, labels)
 
+                total += labels.size(0)
+                correct += (preds == labels).sum().item()
+
+                # ---- Logs ----
+                if global_step % PRINT_EVERY_STEPS == 0:
+                  print(f"e{epoch} s{global_step} loss={epoch_loss/max(1,(batch_idx+1)*bs):.4f}")
+
+                # ---- Periodic checkpoint ----
+                if global_step > start_step and (global_step % SAVE_EVERY_STEPS == 0):
+                  path = self.save_ckpt(epoch, global_step, net, optimizer, scaler)
+                  print(f"[CKPT] saved {path} (kept last {KEEP_LAST})")
+                  self.tidy()
+
+                global_step += 1
+
+            # ---- End of epoch metrics ----
             epoch_loss /= len(trainloader.dataset)
-            #epoch_acc = correct / total
             epoch_acc = accuracy.compute().item()
-            epoch_precision = precision.compute().item()
-            epoch_recall = recall.compute().item()
-            epoch_f1 = f1_score.compute().item()
-            print(f"local Epoch {epoch+1}: Loss = {epoch_loss:.4f}, Accuracy = {epoch_acc:.4f} (Client {client_id})")
-            print(f"Accuracy = {epoch_acc:.4f}, Precision = {epoch_precision:.4f}, Recall = {epoch_recall:.4f}, F1 = {epoch_f1:.4f} (Client {client_id})")    
+            epoch_prec = precision.compute().item()
+            epoch_rec  = recall.compute().item()
+            epoch_f1   = f1_score.compute().item()
+
+            print(f"local Epoch {epoch+1}: Loss={epoch_loss:.4f}, Acc={epoch_acc:.4f} (Client {client_id})")
+            print(f"Acc={epoch_acc:.4f}, Precision={epoch_prec:.4f}, Recall={epoch_rec:.4f}, F1={epoch_f1:.4f} (Client {client_id})")
+
+            # ---- Log to CSV ----
             with open(log_filename, 'a', newline='') as csvfile:
               writer = csv.writer(csvfile)
-              writer.writerow([epoch+1, epoch_loss, epoch_acc])            
-              print(f"Client {client_id} - Epoch {epoch+1}/{epochs}, Loss: {epoch_loss/len(trainloader):.4f}")
-        
+              writer.writerow([epoch+1, epoch_loss, epoch_acc])
+
+            # ---- End-of-epoch checkpoint (safer resume point) ----
+            final_path = self.save_ckpt(epoch+1, global_step, net, optimizer, scaler)
+            print(f"[CKPT] epoch {epoch+1} saved to {final_path}")
+            self.tidy()
+
         # Simulate delay if needed
         if simulate_delay:
           import random
