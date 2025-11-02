@@ -456,7 +456,7 @@ class FederatedClient(fl.client.NumPyClient):
         #net.to(self.device)
         net.train()
         scaler = torch.cuda.amp.GradScaler(enabled=True)
-        start_epoch, start_step, _ = self.resume_if_any(net, optimizer, scaler, map_location="cpu")    
+        start_epoch, start_step = self.resume_if_any(net, optimizer, scaler, map_location="cpu")
         global_step = start_step
         SAVE_EVERY_STEPS   = 2000   # keep this fairly large
         PRINT_EVERY_STEPS  = 100
