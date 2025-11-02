@@ -292,18 +292,17 @@ def make_pathmnist_clients_with_domains(
         train_loaders.append(
             DataLoader(augmented_trn_ds, batch_size=batch_size,
                         shuffle=True,
-    num_workers=0,         
+    num_workers=2,         
     pin_memory=True,
-    persistent_workers=False,
-    prefetch_factor=2
+ 
                       )
         )
 
         val_loaders.append(
             DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=True, 
                         pin_memory=True,
-    persistent_workers=False,
-    prefetch_factor=2)
+   num_workers=2, 
+   )
         )
 
     
@@ -325,17 +324,17 @@ def make_pathmnist_clients_with_domains(
    
     train_loaders.append(
         DataLoader(augmented_trn_test_ds, batch_size=batch_size,    shuffle=True,
-    num_workers=0,         
+    num_workers=2,         
     pin_memory=True,
-    persistent_workers=False,
-    prefetch_factor=2)
+
+    )
     )
     val_loaders.append(
         DataLoader(val_test_base, batch_size=batch_size   ,    shuffle=True,
-    num_workers=0,         
+    num_workers=2,         
     pin_memory=True,
-    persistent_workers=False,
-    prefetch_factor=2)
+ 
+    )
     )
 
     print(f"\n[SUMMARY]")
