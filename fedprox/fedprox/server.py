@@ -103,7 +103,7 @@ class GPAFStrategy(FedAvg):
         map_path="client_id_mapping1.csv"
         
         
-        self.theta = getattr(self, "theta", 0.65)          # optional threshold for s_c
+        self.theta =0.13         # optional threshold for s_c
         self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
 
         self.uuid_to_cid = {}     # {"8325...": "client_0"}
@@ -380,27 +380,42 @@ class GPAFStrategy(FedAvg):
     # ---- in Strategy.__init__ ----
 
     def _observe_mapping(self, results):
-      "Capture mappings from Flower UUID to your logical id when available."
+      """Capture mappings from Flower UUID (runtime id) to logical id when available."""
       for client_proxy, fit_res in results:
-        uuid = client_proxy.cid
-        # Expect client to report its logical id in metrics once (optional, else skip)
-        logical = fit_res.metrics.get("logical_id") if "logical_id" in fit_res.metrics else None
-        if logical:
-            if uuid not in self.uuid_to_cid:
-                self.uuid_to_cid[uuid] = logical
-                self.cid_to_uuid[logical] = uuid
-      # Refresh gt UUID set if we can resolve some cids now
-      newly_resolved = {self.cid_to_uuid[c] for c in self.ground_truth_cids if c in self.cid_to_uuid}
-      self.ground_truth_flower_ids |= newly_resolved
+        uuid = client_proxy.cid  # Flower runtime ID (string)
+        # The client should report its logical id once in fit metrics
+        logical = fit_res.metrics.get("logical_id") if fit_res.metrics else None
 
-      print(f'  self.ground_truth_flower_ids : {self.ground_truth_flower_ids}')
+        # Register new mapping if we haven't seen it yet
+        if logical and uuid not in self.uuid_to_cid:
+            self.uuid_to_cid[uuid] = logical
+            self.cid_to_uuid[logical] = uuid
+            print(f"[Mapping] logical_id={logical} ↔ uuid={uuid}")
+
+      # --- Refresh the UUID set of ground-truth stragglers ---
+      resolved = {
+        self.cid_to_uuid[c]
+        for c in self.ground_truth_cids               # {"client_0", "client_1", ...}
+        if c in self.cid_to_uuid                      # only keep resolved ones
+    }
+
+      # Merge with any previously known UUIDs
+      self.ground_truth_flower_ids |= resolved
+
+      print(f"[Round Mapping Update] ground_truth_flower_ids now: {self.ground_truth_flower_ids}")
+
 
     def _on_round_end_update_mapping(self, server_round, results):
+      """Update logical↔uuid mapping and refresh ground-truth UUIDs each round."""
       self._observe_mapping(results)
-      # fall back: if your logical labels already equal Flower ids, this still works
+
+      # Fallback: if your provided IDs are already UUIDs (not "client_0" labels)
       if not self.ground_truth_flower_ids:
-        # if user provided UUIDs directly in ground_truth_cids
-        self.ground_truth_flower_ids = set(self.ground_truth_cids)
+        maybe_uuid = all(id_.isdigit() or id_.startswith("8") for id_ in self.ground_truth_cids)
+        if maybe_uuid:
+            self.ground_truth_flower_ids = set(self.ground_truth_cids)
+
+      print(f"[Round {server_round}] Ground-truth UUIDs: {self.ground_truth_flower_ids}")
 
     def _predict_stragglers_from_score(self, T_max, client_ids):
       """Return set of predicted stragglers using s_c=1-As."""
@@ -411,15 +426,16 @@ class GPAFStrategy(FedAvg):
         As = T_max / (T_c + self.beta * T_max) if (T_c > 0 and T_max > 0) else 0.0
         s_c = 1.0 - As
         scores[cid] = s_c
-
+      """
       if self.use_topk:
         # Predict exactly as many as we injected (good for clean evaluation)
         k = len(self.ground_truth_flower_ids)  # see mapping below
         # sort by highest score (slowest)
         predicted = set(sorted(scores, key=scores.get, reverse=True)[:k])
       else:
-        # Thresholded prediction
-        predicted = {cid for cid, s in scores.items() if s >= self.theta}
+      """
+      # Thresholded prediction
+      predicted = {cid for cid, s in scores.items() if s >= self.theta}
       return predicted, scores
 
     def save_client_mapping(self):
@@ -461,6 +477,8 @@ class GPAFStrategy(FedAvg):
 
         # --- GROUND TRUTH (mapped to Flower IDs) ---
         gt_set = self.ground_truth_flower_ids  # mapping provided below
+
+        print(f'====== truth {gt_set} ====== ')
 
         # Store per-client records
         for cid in participating_ids:
@@ -778,12 +796,7 @@ class GPAFStrategy(FedAvg):
   
 
     def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
-      """
-      Visualize clusters with t-SNE projection.
-      Colors = Predicted clusters (EM)
-      Shapes = True domains (ground truth)
-      """
-   
+    
       # 1. Flatten prototypes: one vector per client
       prototype_matrix = []
       for client_prototypes in prototypes:

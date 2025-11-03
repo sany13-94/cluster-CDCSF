@@ -186,6 +186,8 @@ class FederatedClient(fl.client.NumPyClient):
                 "duration": training_duration,
                      "client_cid": self.client_id,           # your logical ID
             "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
+                "logical_id": f"client_{self.client_id}",  # ensures "client_0"
+
             })
            
           
