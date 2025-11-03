@@ -483,9 +483,9 @@ class GPAFStrategy(FedAvg):
     #strqgglers 
 
 
-def _observe_mapping(self, results):
-    "Capture mappings from Flower UUID to your logical id when available."
-    for client_proxy, fit_res in results:
+    def _observe_mapping(self, results):
+      "Capture mappings from Flower UUID to your logical id when available."
+      for client_proxy, fit_res in results:
         uuid = client_proxy.cid
         # Expect client to report its logical id in metrics once (optional, else skip)
         logical = fit_res.metrics.get("logical_id") if "logical_id" in fit_res.metrics else None
@@ -493,14 +493,14 @@ def _observe_mapping(self, results):
             if uuid not in self.uuid_to_cid:
                 self.uuid_to_cid[uuid] = logical
                 self.cid_to_uuid[logical] = uuid
-    # Refresh gt UUID set if we can resolve some cids now
-    newly_resolved = {self.cid_to_uuid[c] for c in self.ground_truth_cids if c in self.cid_to_uuid}
-    self.ground_truth_flower_ids |= newly_resolved
+      # Refresh gt UUID set if we can resolve some cids now
+      newly_resolved = {self.cid_to_uuid[c] for c in self.ground_truth_cids if c in self.cid_to_uuid}
+      self.ground_truth_flower_ids |= newly_resolved
 
-def _on_round_end_update_mapping(self, server_round, results):
-    self._observe_mapping(results)
-    # fall back: if your logical labels already equal Flower ids, this still works
-    if not self.ground_truth_flower_ids:
+    def _on_round_end_update_mapping(self, server_round, results):
+      self._observe_mapping(results)
+      # fall back: if your logical labels already equal Flower ids, this still works
+      if not self.ground_truth_flower_ids:
         # if user provided UUIDs directly in ground_truth_cids
         self.ground_truth_flower_ids = set(self.ground_truth_cids)
 
