@@ -1304,7 +1304,6 @@ class GPAFStrategy(FedAvg):
                 "server_round": server_round,
                 "total_rounds": getattr(self, 'total_rounds', 100), 
        "simulate_stragglers": "0,1",   # or ",".join(str(i) for i in range(2))
-,
 
      "delay_base_sec": 10.0,     # << increase base delay
     "delay_jitter_sec": 3.0,    # small randomness
