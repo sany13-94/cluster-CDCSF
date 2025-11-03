@@ -294,11 +294,43 @@ class GPAFStrategy(FedAvg):
         for client_proxy, fit_res in results:
             client_id = client_proxy.cid
             metrics = fit_res.metrics
-            uuid = client_proxy.cid  # Flower internal UUID
-            cid = fit_res.metrics.get("cid")  # ✅ local client ID sent from client
-            
+            uuid = client_proxy.cid  # Flower internal UUID            
             cid = metrics.get("client_cid")
             node = metrics.get("flower_node_id")
+            self.uuid_to_cid[uuid] = cid
+
+            print(f'===client id: {cid} and flower id {uuid} and node :{node} ===')
+
+           
+            if client_id not in self.client_participation_count:
+              self.client_participation_count[client_id] = 0
+            self.client_participation_count[client_id] += 1
+            
+            self.participated_clients.add(client_id)
+            current_participants.add(client_id)
+            
+            # Update EMA training time - Equation (4)
+          
+            metrics = fit_res.metrics or {}
+            if "duration" not in metrics:
+                  continue
+            dur = float(metrics["duration"])
+            prev = self.training_times.get(uuid)
+            if prev is None:
+                  ema = dur
+                  print(f"[EMA Init] {uuid}: T_c(0) = {dur:.2f}s")
+            else:
+                ema = self.alpha * dur + (1.0 - self.alpha) * prev
+                print(f"[EMA Update] {uuid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
+            self.training_times[uuid] = ema
+
+            # (optional) capture logical id once if client reports it
+            logical = metrics.get("client_cid")
+            if logical and uuid not in self.uuid_to_cid:
+                self.uuid_to_cid[uuid] = logical
+                self.cid_to_uuid[logical] = uuid
+
+            current_round_durations.append(dur)
             if cid is None or node is None:
                 continue
             key = (str(int(cid)), str(node))
@@ -309,36 +341,10 @@ class GPAFStrategy(FedAvg):
                     "client_cid": key[0],
                     "flower_node_id": key[1],
                 })
-        self._append_rows(new_rows)
-        if new_rows:
-            print(f"[Server] Recorded {len(new_rows)} new client(s). Total unique: {len(self._seen)}")
-
-
-        if cid is not None:
-            self.uuid_to_cid[uuid] = cid
+            self._append_rows(new_rows)
+            if new_rows:
+              print(f"[Server] Recorded {len(new_rows)} new client(s). Total unique: {len(self._seen)}")
             
-            self.participated_clients.add(client_id)
-            current_participants.add(client_id)
-            
-            # Update EMA training time - Equation (4)
-            if "duration" in metrics:
-                duration = metrics["duration"]
-                
-                # Initialize or update T_c(i)
-                if client_id not in self.training_times:
-                    # First observation: T_c(0) = t_avail_c(0)
-                    self.training_times[client_id] = duration
-                    print(f"[EMA Init] Client {client_id}: T_c(0) = {duration:.2f}s")
-                else:
-                    # EMA update: T_c(i) = α * t_avail_c(i) + (1-α) * T_c(i-1)
-                    old_ema = self.training_times[client_id]
-                    self.training_times[client_id] = (
-                        self.ema_alpha * duration + 
-                        (1 - self.ema_alpha) * old_ema
-                    )
-                    print(f"[EMA Update] Client {client_id}: {old_ema:.2f}s → {self.training_times[client_id]:.2f}s (raw: {duration:.2f}s)")
-                
-                current_round_durations.append(duration)
             
             # Collect parameters for aggregation
             clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
@@ -347,13 +353,7 @@ class GPAFStrategy(FedAvg):
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
 
-
-        # In aggregate_fit() - CORRECT! After clients finish training
-        for client_proxy, fit_res in results:
-          client_id = client_proxy.cid
-          if client_id not in self.client_participation_count:
-            self.client_participation_count[client_id] = 0
-          self.client_participation_count[client_id] += 1
+         
 
         # After EMA update, validate predictions
         self._on_round_end_update_mapping(server_round, results)
@@ -392,6 +392,8 @@ class GPAFStrategy(FedAvg):
       # Refresh gt UUID set if we can resolve some cids now
       newly_resolved = {self.cid_to_uuid[c] for c in self.ground_truth_cids if c in self.cid_to_uuid}
       self.ground_truth_flower_ids |= newly_resolved
+
+      print(f'  self.ground_truth_flower_ids : {self.ground_truth_flower_ids}')
 
     def _on_round_end_update_mapping(self, server_round, results):
       self._observe_mapping(results)
@@ -1301,7 +1303,8 @@ class GPAFStrategy(FedAvg):
             client_config = {
                 "server_round": server_round,
                 "total_rounds": getattr(self, 'total_rounds', 100), 
-    "simulate_stragglers": ",".join(self.ground_truth_stragglers),  # ✅ store as string
+        "simulate_stragglers": ",".join(self.ground_truth_flower_ids),
+
      "delay_base_sec": 10.0,     # << increase base delay
     "delay_jitter_sec": 3.0,    # small randomness
     "delay_prob": 1.0,    

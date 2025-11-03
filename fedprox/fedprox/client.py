@@ -148,8 +148,13 @@ class FederatedClient(fl.client.NumPyClient):
             uuid=self.client_id
             print(f"Client {self.client_id} starting fit() for round {round_number}")
             simulate_ids = set((config.get("simulate_stragglers") or "").split(",")) if config.get("simulate_stragglers") else set()
+            
+            print(f"Client simulate_ids: {simulate_ids} starting fit() for round {round_number}")
+
             simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
             print(f"[Client {self.client_id}] Is straggler: {simulate_delay}")
+
+          
             start_time = time.time()
             # On ne le fait que pour la première ronde pour des raisons de performance.
             if round_number == 1 :
@@ -539,6 +544,9 @@ class FederatedClient(fl.client.NumPyClient):
           uuid=client_id
           print(f"[client {uuid}] Simulating straggler delay: {delay:.2f}s")
           time.sleep(delay)
+        
+
+
 
 
 
