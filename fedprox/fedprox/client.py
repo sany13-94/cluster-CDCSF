@@ -141,24 +141,15 @@ class FederatedClient(fl.client.NumPyClient):
     
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
-        try:
+        try: 
+            import random
             round_number = config.get("server_round", -1)
             simulate_delay = False
-            
+            uuid=self.client_id
             print(f"Client {self.client_id} starting fit() for round {round_number}")
-            simulate_stragglers_str = config.get("simulate_stragglers", "")
-            if simulate_stragglers_str:
-              simulate_stragglers = set(simulate_stragglers_str.split(","))
-            else:
-              simulate_stragglers = set()
-
-            simulate_delay = self.client_id in simulate_stragglers
+            simulate_ids = set((config.get("simulate_stragglers") or "").split(",")) if config.get("simulate_stragglers") else set()
+            simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
             print(f"[Client {self.client_id}] Is straggler: {simulate_delay}")
-
-    
-
-            print(f"Client {self.client_id}: simulate_delay={simulate_delay}")
-
             start_time = time.time()
             # On ne le fait que pour la première ronde pour des raisons de performance.
             if round_number == 1 :
@@ -168,15 +159,12 @@ class FederatedClient(fl.client.NumPyClient):
             client_id=self.client_id, 
             traindata_loader=self.traindata # Utilisation du DataLoader d'entraînement
         )
-            # ----------------------------------------------------
-
-            
             # Update model with global parameters
             self.set_parameters(parameters)
             
             # Train the model
             print(f"Client {self.client_id} starting training...")
-            self.train(self.net, self.traindata, self.client_id, epochs=self.local_epochs, simulate_delay=simulate_delay)
+            self.train(self.net, self.traindata, self.client_id, epochs=self.local_epochs,cfg=config, simulate_delay=simulate_delay)
             print(f"Client {self.client_id} completed training")
            
             # Extract and cache prototypes after training
@@ -185,10 +173,6 @@ class FederatedClient(fl.client.NumPyClient):
             
             training_duration = time.time() - start_time
             
-            # Get updated parameters
-            #updated_parameters = [val.cpu().numpy() for _, val in self.net.state_dict().items()]
-            
-            # Return parameters and metrics (NumPyClient format)
             num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
            
             return  (self.get_parameters(), num_examples, {
@@ -388,12 +372,6 @@ class FederatedClient(fl.client.NumPyClient):
             self.class_counts_from_last_round = None
 
     
-    
-
- 
-
-
-
     # ------------------ Helpers ------------------
     def latest_ckpt_in(self,path):
       files = sorted(glob.glob(os.path.join(path, "*.pt")))
@@ -447,7 +425,7 @@ class FederatedClient(fl.client.NumPyClient):
       if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    def train(self, net, trainloader, client_id, epochs, simulate_delay=False):
+    def train(self, net, trainloader, client_id, epochs,cfg, simulate_delay=False):
         """Train the network on the training set."""
 
         criterion = torch.nn.CrossEntropyLoss()
@@ -550,11 +528,18 @@ class FederatedClient(fl.client.NumPyClient):
             self.tidy()
 
         # Simulate delay if needed
+       
+
+
         if simulate_delay:
           import random
-          delay = random.uniform(2.0, 5.0)  # Increase delay for clearer effect
-          print(f"Client {client_id} simulating straggler delay: {delay:.2f}s")
+          base = float(cfg.get("delay_base_sec", 10.0))
+          jitter = float(cfg.get("delay_jitter_sec", 3.0))
+          delay = base + random.uniform(0.0, jitter)
+          uuid=client_id
+          print(f"[client {uuid}] Simulating straggler delay: {delay:.2f}s")
           time.sleep(delay)
+
 
 
 

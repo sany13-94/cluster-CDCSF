@@ -102,6 +102,15 @@ class GPAFStrategy(FedAvg):
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
         map_path="client_id_mapping1.csv"
         
+        
+        self.theta = getattr(self, "theta", 0.65)          # optional threshold for s_c
+        self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
+
+        self.uuid_to_cid = {}     # {"8325...": "client_0"}
+        self.cid_to_uuid = {}     # {"client_0": "8325..."}
+        self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
+        self.ground_truth_flower_ids = set()  # will be filled as clients appear
+ 
         self._map_written = False
         
         # CSMDA Client Selection Parameters (UPDATED)
@@ -158,7 +167,6 @@ class GPAFStrategy(FedAvg):
         
         # CSMDA Hyperparameters
         self.alpha = 0.3  # EMA decay for training time
-        self.beta = 0.2   # fairness boost increment
         self.epsilon = 0.1  # straggler tolerance (10% of T_max)
         self.phase_threshold = 30  # switch from reliability to fairness focus
         # EMA Training Time Tracking
@@ -348,6 +356,8 @@ class GPAFStrategy(FedAvg):
           self.client_participation_count[client_id] += 1
 
         # After EMA update, validate predictions
+        self._on_round_end_update_mapping(server_round, results)
+
         self._validate_straggler_predictions(server_round, results)
         
         print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
@@ -364,6 +374,51 @@ class GPAFStrategy(FedAvg):
             self._save_all_results()
         return ndarrays_to_parameters(aggregated_params), {}
 
+    # ---- in your Strategy class ----
+   
+    #mapping clients id in stragglers
+    # ---- in Strategy.__init__ ----
+
+    def _observe_mapping(self, results):
+      "Capture mappings from Flower UUID to your logical id when available."
+      for client_proxy, fit_res in results:
+        uuid = client_proxy.cid
+        # Expect client to report its logical id in metrics once (optional, else skip)
+        logical = fit_res.metrics.get("logical_id") if "logical_id" in fit_res.metrics else None
+        if logical:
+            if uuid not in self.uuid_to_cid:
+                self.uuid_to_cid[uuid] = logical
+                self.cid_to_uuid[logical] = uuid
+      # Refresh gt UUID set if we can resolve some cids now
+      newly_resolved = {self.cid_to_uuid[c] for c in self.ground_truth_cids if c in self.cid_to_uuid}
+      self.ground_truth_flower_ids |= newly_resolved
+
+    def _on_round_end_update_mapping(self, server_round, results):
+      self._observe_mapping(results)
+      # fall back: if your logical labels already equal Flower ids, this still works
+      if not self.ground_truth_flower_ids:
+        # if user provided UUIDs directly in ground_truth_cids
+        self.ground_truth_flower_ids = set(self.ground_truth_cids)
+
+    def _predict_stragglers_from_score(self, T_max, client_ids):
+      """Return set of predicted stragglers using s_c=1-As."""
+      # compute scores for current participants only
+      scores = {}
+      for cid in client_ids:
+        T_c = self.training_times.get(cid, 0.0)
+        As = T_max / (T_c + self.beta * T_max) if (T_c > 0 and T_max > 0) else 0.0
+        s_c = 1.0 - As
+        scores[cid] = s_c
+
+      if self.use_topk:
+        # Predict exactly as many as we injected (good for clean evaluation)
+        k = len(self.ground_truth_flower_ids)  # see mapping below
+        # sort by highest score (slowest)
+        predicted = set(sorted(scores, key=scores.get, reverse=True)[:k])
+      else:
+        # Thresholded prediction
+        predicted = {cid for cid, s in scores.items() if s >= self.theta}
+      return predicted, scores
 
     def save_client_mapping(self):
 
@@ -385,54 +440,70 @@ class GPAFStrategy(FedAvg):
         self.save_validation_results()
 
     def _validate_straggler_predictions(self, server_round, results):
-        """
-        Compare T_c > T_max predictions against pre-defined ground truth
-        """
-        # Calculate current T_max
+        # Current T_max (EMA-based, as you already maintain in self.training_times)
         valid_times = [t for t in self.training_times.values() if t > 0]
         if not valid_times:
-            return
-        
-        T_max = np.mean(valid_times)
-        
-        # Collect actual durations this round
-        round_durations = {}
+          return
+        T_max = float(np.mean(valid_times))
+
+        # Who actually participated this round? (and their durations for logging)
+        round_durations, participating_ids = {}, []
         for client_proxy, fit_res in results:
-            client_id = client_proxy.cid
-            if "duration" in fit_res.metrics:
-                round_durations[client_id] = fit_res.metrics["duration"]
-        
-        # Validate each participating client
-        for client_id in round_durations.keys():
-            T_c = self.training_times.get(client_id, 0)
-            actual_duration = round_durations[client_id]
+          cid = client_proxy.cid  # Flower runtime UUID
+          participating_ids.append(cid)
+          if "duration" in fit_res.metrics:
+            round_durations[cid] = fit_res.metrics["duration"]
+
+        # --- PREDICT with the s_c score ---
+        predicted_set, scores = self._predict_stragglers_from_score(T_max, participating_ids)
+
+        # --- GROUND TRUTH (mapped to Flower IDs) ---
+        gt_set = self.ground_truth_flower_ids  # mapping provided below
+
+        # Store per-client records
+        for cid in participating_ids:
+          T_c = self.training_times.get(cid, 0.0)
+          s_c = scores.get(cid, 0.0)
+          record = {
+            "round": server_round,
+            "client_id": cid,                       # Flower UUID
+            "logical_id": self.uuid_to_cid.get(cid, None),  # optional
+            "T_c": T_c,
+            "T_max": T_max,
+            "s_c": s_c,
+            "actual_duration": round_durations.get(cid, np.nan),
+            "predicted_straggler": cid in predicted_set,
+            "ground_truth_straggler": cid in gt_set,
+        }
+          record["prediction_type"] = self._classify_prediction(
+            record["predicted_straggler"], record["ground_truth_straggler"]
+        )
+          self.validation_history.append(record)
             
-            # YOUR PREDICTION (based on T_c > T_max)
-            predicted_straggler = T_c > T_max
-            
-            # GROUND TRUTH (from your setup)
-            is_actually_straggler = client_id in self.ground_truth_stragglers
-            
-            # CORRECT PREDICTION?
-            correct = predicted_straggler == is_actually_straggler
-            
-            # Store for analysis
-            record = {
-                'round': server_round,
-                'client_id': client_id,
-                'T_c': T_c,
-                'T_max': T_max,
-                'actual_duration': actual_duration,
-                'predicted_straggler': predicted_straggler,
-                'ground_truth_straggler': is_actually_straggler,
-                'correct_prediction': correct,
-                'prediction_type': self._classify_prediction(predicted_straggler, is_actually_straggler)
-            }
-            
-            self.validation_history.append(record)
-         
-            
-    
+    #strqgglers 
+
+
+def _observe_mapping(self, results):
+    "Capture mappings from Flower UUID to your logical id when available."
+    for client_proxy, fit_res in results:
+        uuid = client_proxy.cid
+        # Expect client to report its logical id in metrics once (optional, else skip)
+        logical = fit_res.metrics.get("logical_id") if "logical_id" in fit_res.metrics else None
+        if logical:
+            if uuid not in self.uuid_to_cid:
+                self.uuid_to_cid[uuid] = logical
+                self.cid_to_uuid[logical] = uuid
+    # Refresh gt UUID set if we can resolve some cids now
+    newly_resolved = {self.cid_to_uuid[c] for c in self.ground_truth_cids if c in self.cid_to_uuid}
+    self.ground_truth_flower_ids |= newly_resolved
+
+def _on_round_end_update_mapping(self, server_round, results):
+    self._observe_mapping(results)
+    # fall back: if your logical labels already equal Flower ids, this still works
+    if not self.ground_truth_flower_ids:
+        # if user provided UUIDs directly in ground_truth_cids
+        self.ground_truth_flower_ids = set(self.ground_truth_cids)
+
     def _classify_prediction(self, predicted, actual):
         """Classify prediction type for confusion matrix"""
         if predicted and actual:
@@ -1222,6 +1293,7 @@ class GPAFStrategy(FedAvg):
       selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
      
       instructions = []
+     
     
       for client_id in selected_clients_cids:
         if client_id in all_clients:
@@ -1230,6 +1302,9 @@ class GPAFStrategy(FedAvg):
                 "server_round": server_round,
                 "total_rounds": getattr(self, 'total_rounds', 100), 
     "simulate_stragglers": ",".join(self.ground_truth_stragglers),  # ✅ store as string
+     "delay_base_sec": 10.0,     # << increase base delay
+    "delay_jitter_sec": 3.0,    # small randomness
+    "delay_prob": 1.0,    
 
             }
             
