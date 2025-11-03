@@ -458,47 +458,46 @@ class GPAFStrategy(FedAvg):
         self.save_validation_results()
 
     def _validate_straggler_predictions(self, server_round, results):
-        # Current T_max (EMA-based, as you already maintain in self.training_times)
-        valid_times = [t for t in self.training_times.values() if t > 0]
-        if not valid_times:
-          return
-        T_max = float(np.mean(valid_times))
+      # participants
+      participants, round_dur = [], {}
+      for client_proxy, fit_res in results:
+        uuid = client_proxy.cid
+        participants.append(uuid)
+        if "duration" in fit_res.metrics:
+            round_dur[uuid] = float(fit_res.metrics["duration"])
 
-        # Who actually participated this round? (and their durations for logging)
-        round_durations, participating_ids = {}, []
-        for client_proxy, fit_res in results:
-          cid = client_proxy.cid  # Flower runtime UUID
-          participating_ids.append(cid)
-          if "duration" in fit_res.metrics:
-            round_durations[cid] = fit_res.metrics["duration"]
+      # compute T_max from EMAs (assume you already updated EMA this round)
+      valid_times = [t for t in self.training_times.values() if t is not None]
+      if not valid_times:
+        return
+      T_max = float(np.mean(valid_times))
 
-        # --- PREDICT with the s_c score ---
-        predicted_set, scores = self._predict_stragglers_from_score(T_max, participating_ids)
+      # predict (your existing code)
+      predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
 
-        # --- GROUND TRUTH (mapped to Flower IDs) ---
-        gt_set = self.ground_truth_flower_ids  # mapping provided below
+      # robust ground-truth check: UUID OR logical label
+      gt_uuid_set = self.ground_truth_flower_ids          # UUIDs
+      gt_logical_set = self.ground_truth_cids             # {"client_0","client_1",...}
 
-        print(f'====== truth {gt_set} ====== ')
+      for uuid in participants:
+        logical = self.uuid_to_cid.get(uuid)            # may be None early
+        is_gt = (uuid in gt_uuid_set) or (logical in gt_logical_set)
+        print(f'===== {is_gt}')
 
-        # Store per-client records
-        for cid in participating_ids:
-          T_c = self.training_times.get(cid, 0.0)
-          s_c = scores.get(cid, 0.0)
-          record = {
+        rec = {
             "round": server_round,
-            "client_id": cid,                       # Flower UUID
-            "logical_id": self.uuid_to_cid.get(cid, None),  # optional
-            "T_c": T_c,
+            "client_id": uuid,
+            "logical_id": logical,
+            "T_c": self.training_times.get(uuid, float("nan")),
             "T_max": T_max,
-            "s_c": s_c,
-            "actual_duration": round_durations.get(cid, np.nan),
-            "predicted_straggler": cid in predicted_set,
-            "ground_truth_straggler": cid in gt_set,
+            "s_c": scores.get(uuid, float("nan")),
+            "actual_du": round_dur.get(uuid, float("nan")),
+            "predicted": uuid in predicted_set,
+            "ground_tr": is_gt,                         # <-- now correct
         }
-          record["prediction_type"] = self._classify_prediction(
-            record["predicted_straggler"], record["ground_truth_straggler"]
-        )
-          self.validation_history.append(record)
+        rec["prediction_type"] = self._classify_prediction(rec["predicted"], rec["ground_tr"])
+        self.validation_history.append(rec)
+
             
     #strqgglers 
 
