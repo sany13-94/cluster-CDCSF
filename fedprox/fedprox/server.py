@@ -456,7 +456,9 @@ class GPAFStrategy(FedAvg):
         self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", 
                                 )
         self.save_validation_results()
-
+    def _norm(self,label: str) -> str:
+      s = str(label).strip()
+      return s.replace("client_", "")   # "client_0" -> "0"
     def _validate_straggler_predictions(self, server_round, results):
       # participants
       participants, round_dur = [], {}
@@ -481,8 +483,10 @@ class GPAFStrategy(FedAvg):
 
       for uuid in participants:
         logical = self.uuid_to_cid.get(uuid)            # may be None early
-        is_gt = (uuid in gt_uuid_set) or (logical in gt_logical_set)
-        print(f'===== {is_gt} and {logical} and {gt_logical_set}')
+        is_gt = (uuid in gt_uuid_set) or (logical is not None and self._norm(logical) in gt_logical_set)
+
+        print(f'===== {is_gt} and {self._norm(logical)} and {gt_logical_set}')
+        print(f'===== {gt_uuid_set} and {uuid} ')
 
         rec = {
             "round": server_round,
