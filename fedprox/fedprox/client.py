@@ -151,7 +151,7 @@ class FederatedClient(fl.client.NumPyClient):
             
             raw = (config.get("simulate_stragglers") or "")
             simulate_ids = {s.strip() for s in raw.split(",") if s.strip()}
-            print(f"Client simulate_ids: {simulate_ids} starting fit() for round {round_number}")
+            print(f"Client simulate_ids: {simulate_ids}tttt starting fit() for round {round_number}")
 
             simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
             print(f"[Client {self.client_id}] Is straggler: {simulate_delay}")
