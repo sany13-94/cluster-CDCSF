@@ -609,10 +609,10 @@ cfg=None  ,
         trainloader = trainloaders[int(cid)]
 
         images, labels = next(iter(trainloader))
-        print(f"Saved sample image for client {cid} (label={images[0]})")
+        #print(f"Saved sample image for client {cid} (label={images[0]})")
         # Access the original client_id stored in the dataset
         dataset_client_id = trainloader.dataset.client_id
-        print(f"[Client {cid}] dataset_client_id = {dataset_client_id}")
+        #print(f"[Client {cid}] dataset_client_id = {dataset_client_id}")
         valloader = valloaders[int(cid)]  
         numpy_client =  FederatedClient(
            model,

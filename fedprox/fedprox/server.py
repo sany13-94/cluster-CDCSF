@@ -144,7 +144,7 @@ class GPAFStrategy(FedAvg):
         # Virtual cluster configuration
         self.use_virtual_cluster = True  # Enable virtual cluster for never-participated clients
         ema_alpha: float = 0.3  # EMA smoothing for training times
-        beta: float = 1.5  # Penalty strength for reliability score
+        beta: float = 0.05  # Penalty strength for reliability score
         initial_alpha1: float = 0.6  # Initial reliability weight
         initial_alpha2: float = 0.4  # Initial fairness weight
         phase_threshold: int = 20  # Round to switch weight emphasis
