@@ -482,7 +482,7 @@ class GPAFStrategy(FedAvg):
       for uuid in participants:
         logical = self.uuid_to_cid.get(uuid)            # may be None early
         is_gt = (uuid in gt_uuid_set) or (logical in gt_logical_set)
-        print(f'===== {is_gt}')
+        print(f'===== {is_gt} and {logical} and {gt_logical_set}')
 
         rec = {
             "round": server_round,
