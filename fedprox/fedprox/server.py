@@ -467,7 +467,7 @@ class GPAFStrategy(FedAvg):
             "T_c": self.training_times.get(uuid, float("nan")),
             "T_max": T_max,
             "s_c": scores.get(uuid, float("nan")),
-            "actual_du": round_dur.get(uuid, float("nan")),
+            "actual_duration": round_dur.get(uuid, float("nan")),
             "predicted_straggler": uuid in predicted_set,
             "ground_truth_straggler": is_gt,                         # <-- now correct
         }
