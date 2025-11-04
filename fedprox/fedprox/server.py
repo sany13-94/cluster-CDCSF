@@ -447,12 +447,7 @@ class GPAFStrategy(FedAvg):
     int(cid.split("_", 1)[1])
     for cid in gt_logical_set
     if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
-}
-      '''
-      for uuid in participants:
-        logical = self.uuid_to_cid.get(uuid)
-        is_gt = logical is not None and f"client_{logical}" in gt_logical_set
-      '''
+}  
     
       for uuid in participants:
           val = self.uuid_to_cid.get(uuid)  # could be "0" or 0 or None
@@ -465,7 +460,7 @@ class GPAFStrategy(FedAvg):
           print(f'===== {is_gt} and {self._norm(logical)} and {gt_logical_set}')
           print(f'===== {gt_uuid_set} and {uuid} and {gt_idx_set}')
 
-      rec = {
+          rec = {
             "round": server_round,
             "client_id": uuid,
             "logical_id": logical,
@@ -476,8 +471,8 @@ class GPAFStrategy(FedAvg):
             "predicted": uuid in predicted_set,
             "ground_tr": is_gt,                         # <-- now correct
         }
-        rec["prediction_type"] = self._classify_prediction(rec["predicted"], rec["ground_tr"])
-        self.validation_history.append(rec)
+          rec["prediction_type"] = self._classify_prediction(rec["predicted"], rec["ground_tr"])
+          self.validation_history.append(rec)
 
             
     #strqgglers 
