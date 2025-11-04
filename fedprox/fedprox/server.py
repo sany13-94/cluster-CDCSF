@@ -468,8 +468,8 @@ class GPAFStrategy(FedAvg):
             "T_max": T_max,
             "s_c": scores.get(uuid, float("nan")),
             "actual_du": round_dur.get(uuid, float("nan")),
-            "predicted": uuid in predicted_set,
-            "ground_tr": is_gt,                         # <-- now correct
+            "predicted_straggler": uuid in predicted_set,
+            "ground_truth_straggler": is_gt,                         # <-- now correct
         }
           rec["prediction_type"] = self._classify_prediction(rec["predicted"], rec["ground_tr"])
           self.validation_history.append(rec)
