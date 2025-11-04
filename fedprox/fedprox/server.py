@@ -296,6 +296,7 @@ class GPAFStrategy(FedAvg):
             cid = metrics.get("client_cid")
             node = metrics.get("flower_node_id")
             self.uuid_to_cid[uuid] = cid
+            self.cid_to_uuid[cid] = uuid
 
             print(f'===client id: {cid} and flower id {uuid} and node :{node} ===')
 
@@ -322,12 +323,7 @@ class GPAFStrategy(FedAvg):
                 print(f"[EMA Update] {uuid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
             self.training_times[uuid] = ema
 
-            # (optional) capture logical id once if client reports it
-            logical = metrics.get("client_cid")
-            if logical and uuid not in self.uuid_to_cid:
-                self.uuid_to_cid[uuid] = logical
-                self.cid_to_uuid[logical] = uuid
-
+           
             current_round_durations.append(dur)
             if cid is None or node is None:
                 continue
@@ -354,12 +350,7 @@ class GPAFStrategy(FedAvg):
             print(f"[Mapping]rtertr ====logical_id={logical} and {self.uuid_to_cid}")
             print(f"[Mapping]ddd ====: {self.cid_to_uuid}")
 
-            # Register new mapping if we haven't seen it yet
-            if logical and uuid not in self.uuid_to_cid:
-              self.uuid_to_cid[uuid] = logical
-              self.cid_to_uuid[logical] = uuid
-              print(f"[Mapping] logical_id={logical} ↔ uuid={uuid}")
-    
+        
            
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
@@ -452,14 +443,27 @@ class GPAFStrategy(FedAvg):
       gt_uuid_set = self.cid_to_uuid    # UUIDs
       
       gt_logical_set = self.ground_truth_cids             # {"client_0","client_1",...}
-
+      gt_idx_set = {
+    int(cid.split("_", 1)[1])
+    for cid in gt_logical_set
+    if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
+}
+      '''
       for uuid in participants:
         logical = self.uuid_to_cid.get(uuid)
-                    # may be None early
-        is_gt = (uuid in gt_uuid_set) or (logical is not None and self._norm(logical) in gt_logical_set)
+        is_gt = logical is not None and f"client_{logical}" in gt_logical_set
+      '''
+    
+      for uuid in participants:
+          val = self.uuid_to_cid.get(uuid)  # could be "0" or 0 or None
+          try:
+            ogical_idx = int(val) if val is not None else None
+          except (TypeError, ValueError):
+            logical_idx = None
 
-        print(f'===== {is_gt} and {self._norm(logical)} and {gt_logical_set}')
-        print(f'===== {gt_uuid_set} and {uuid} ')
+          is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
+          print(f'===== {is_gt} and {self._norm(logical)} and {gt_logical_set}')
+          print(f'===== {gt_uuid_set} and {uuid} and {gt_idx_set}')
 
         rec = {
             "round": server_round,
