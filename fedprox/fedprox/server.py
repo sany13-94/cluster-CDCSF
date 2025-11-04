@@ -465,7 +465,7 @@ class GPAFStrategy(FedAvg):
           print(f'===== {is_gt} and {self._norm(logical)} and {gt_logical_set}')
           print(f'===== {gt_uuid_set} and {uuid} and {gt_idx_set}')
 
-        rec = {
+      rec = {
             "round": server_round,
             "client_id": uuid,
             "logical_id": logical,
