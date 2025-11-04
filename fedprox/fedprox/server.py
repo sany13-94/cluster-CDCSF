@@ -452,7 +452,7 @@ class GPAFStrategy(FedAvg):
       for uuid in participants:
           val = self.uuid_to_cid.get(uuid)  # could be "0" or 0 or None
           try:
-            ogical_idx = int(val) if val is not None else None
+            logical_idx = int(val) if val is not None else None
           except (TypeError, ValueError):
             logical_idx = None
 
