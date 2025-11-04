@@ -376,7 +376,7 @@ class GPAFStrategy(FedAvg):
       except Exception as e:
         print(f"[aggregate_fit] Error processing client {getattr(client_proxy,'cid','?')}: {e}")
         # continue to next client so we still reach the mapping update
-        continue 
+        
     # ---- in your Strategy class ----
    
     #mapping clients id in stragglers
