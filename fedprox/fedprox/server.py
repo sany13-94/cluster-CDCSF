@@ -457,7 +457,7 @@ class GPAFStrategy(FedAvg):
             logical_idx = None
 
           is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
-          print(f'===== {is_gt} and {self._norm(logical)} and {gt_logical_set}')
+          print(f'===== {is_gt} and {self._norm(logical_idx)} and {gt_logical_set}')
           print(f'===== {gt_uuid_set} and {uuid} and {gt_idx_set}')
 
           rec = {
