@@ -110,7 +110,9 @@ class GPAFStrategy(FedAvg):
         self.cid_to_uuid = {}     # {"client_0": "8325..."}
         self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
         self.ground_truth_flower_ids = set()  # will be filled as clients appear
- 
+        # mappings
+
+        # straggler ground truth (fill with your logical ids, e.g., {"client_0", ...})
         self._map_written = False
         
         # CSMDA Client Selection Parameters (UPDATED)
@@ -270,25 +272,21 @@ class GPAFStrategy(FedAvg):
         results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """
-        Aggregate model updates and updat
-        """
-        if failures:
+      """
+      Aggregate model updates and updat
+      """
+      if failures:
             print(f"[Round {server_round}] Failures: {len(failures)}")
         
-        if not results:
+      if not results:
             print(f"[Round {server_round}] No clients returned results. Skipping aggregation.")
             return None, {}
-        
+      try:  
         clients_params_list = []
         num_samples_list = []
         current_round_durations = []
         current_participants = set()
         new_rows: List[dict] = []
-
-        # Create mapping dict if first time
-        if not hasattr(self, "uuid_to_cid"):
-          self.uuid_to_cid = {}
 
         # Process results and update tracking
         for client_proxy, fit_res in results:
@@ -356,6 +354,7 @@ class GPAFStrategy(FedAvg):
          
 
         # After EMA update, validate predictions
+        print(f"[Round {server_round}] Calling _on_round_end_update_mapping")
         self._on_round_end_update_mapping(server_round, results)
 
         self._validate_straggler_predictions(server_round, results)
@@ -374,6 +373,10 @@ class GPAFStrategy(FedAvg):
             self._save_all_results()
         return ndarrays_to_parameters(aggregated_params), {}
 
+      except Exception as e:
+        print(f"[aggregate_fit] Error processing client {getattr(client_proxy,'cid','?')}: {e}")
+        # continue to next client so we still reach the mapping update
+        continue 
     # ---- in your Strategy class ----
    
     #mapping clients id in stragglers
@@ -391,7 +394,7 @@ class GPAFStrategy(FedAvg):
             self.uuid_to_cid[uuid] = logical
             self.cid_to_uuid[logical] = uuid
             print(f"[Mapping] logical_id={logical} ↔ uuid={uuid}")
-
+    
       # --- Refresh the UUID set of ground-truth stragglers ---
       resolved = {
         self.cid_to_uuid[c]
