@@ -352,6 +352,7 @@ class GPAFStrategy(FedAvg):
             # The client should report its logical id once in fit metrics
             logical = fit_res.metrics.get("logical_id") if fit_res.metrics else None
             print(f"[Mapping]rtertr ====logical_id={logical} and {self.uuid_to_cid}")
+            print(f"[Mapping]ddd ====: {self.cid_to_uuid}")
 
             # Register new mapping if we haven't seen it yet
             if logical and uuid not in self.uuid_to_cid:
@@ -359,27 +360,10 @@ class GPAFStrategy(FedAvg):
               self.cid_to_uuid[logical] = uuid
               print(f"[Mapping] logical_id={logical} ↔ uuid={uuid}")
     
-            # --- Refresh the UUID set of ground-truth stragglers ---
-            resolved = {
-        self.cid_to_uuid[c]
-        for c in self.ground_truth_cids               # {"client_0", "client_1", ...}
-        if c in self.cid_to_uuid                      # only keep resolved ones
-    }
-
-            # Merge with any previously known UUIDs
-            self.ground_truth_flower_ids |= resolved
-
-            print(f"[Round Mapping Update] ground_truth_flower_ids now: {self.ground_truth_flower_ids}")
-        
+           
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
 
-
-        # After EMA update, validate predictions
-        print(f"[Round {server_round}] Calling _on_round_end_update_mapping")
-        self._on_round_end_update_mapping(server_round, results)
-        '''
-        '''
         
 
         self._validate_straggler_predictions(server_round, results)
@@ -465,11 +449,13 @@ class GPAFStrategy(FedAvg):
       predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
 
       # robust ground-truth check: UUID OR logical label
-      gt_uuid_set = self.ground_truth_flower_ids          # UUIDs
+      gt_uuid_set = self.cid_to_uuid    # UUIDs
+      
       gt_logical_set = self.ground_truth_cids             # {"client_0","client_1",...}
 
       for uuid in participants:
-        logical = self.uuid_to_cid.get(uuid)            # may be None early
+        logical = self.uuid_to_cid.get(uuid)
+                    # may be None early
         is_gt = (uuid in gt_uuid_set) or (logical is not None and self._norm(logical) in gt_logical_set)
 
         print(f'===== {is_gt} and {self._norm(logical)} and {gt_logical_set}')
