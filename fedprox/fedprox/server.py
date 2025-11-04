@@ -471,7 +471,7 @@ class GPAFStrategy(FedAvg):
             "predicted_straggler": uuid in predicted_set,
             "ground_truth_straggler": is_gt,                         # <-- now correct
         }
-          rec["prediction_type"] = self._classify_prediction(rec["predicted"], rec["ground_tr"])
+          rec["prediction_type"] = self._classify_prediction(rec["predicted_straggler"], rec["ground_truth_straggler"])
           self.validation_history.append(rec)
 
             
