@@ -347,15 +347,40 @@ class GPAFStrategy(FedAvg):
             # Collect parameters for aggregation
             clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
             num_samples_list.append(fit_res.num_examples)
+            '''
+            '''
+            # The client should report its logical id once in fit metrics
+            logical = fit_res.metrics.get("logical_id") if fit_res.metrics else None
+            print(f"[Mapping]rtertr ====logical_id={logical} and {self.uuid_to_cid}")
+
+            # Register new mapping if we haven't seen it yet
+            if logical and uuid not in self.uuid_to_cid:
+              self.uuid_to_cid[uuid] = logical
+              self.cid_to_uuid[logical] = uuid
+              print(f"[Mapping] logical_id={logical} ↔ uuid={uuid}")
+    
+            # --- Refresh the UUID set of ground-truth stragglers ---
+            resolved = {
+        self.cid_to_uuid[c]
+        for c in self.ground_truth_cids               # {"client_0", "client_1", ...}
+        if c in self.cid_to_uuid                      # only keep resolved ones
+    }
+
+            # Merge with any previously known UUIDs
+            self.ground_truth_flower_ids |= resolved
+
+            print(f"[Round Mapping Update] ground_truth_flower_ids now: {self.ground_truth_flower_ids}")
         
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
 
-         
 
         # After EMA update, validate predictions
         print(f"[Round {server_round}] Calling _on_round_end_update_mapping")
         self._on_round_end_update_mapping(server_round, results)
+        '''
+        '''
+        
 
         self._validate_straggler_predictions(server_round, results)
         
@@ -378,35 +403,6 @@ class GPAFStrategy(FedAvg):
         # continue to next client so we still reach the mapping update
         
     # ---- in your Strategy class ----
-
-
-    def _on_round_end_update_mapping(self, server_round, results):
-      """Capture mappings from Flower UUID (runtime id) to logical id when available."""
-      print(f"[Mapping] mappingg ===========")
-      for client_proxy, fit_res in results:
-        uuid = client_proxy.cid  # Flower runtime ID (string)
-        # The client should report its logical id once in fit metrics
-        logical = fit_res.metrics.get("logical_id") if fit_res.metrics else None
-        print(f"[Mapping]rtertr ====logical_id={logical} and {self.uuid_to_cid}")
-
-        # Register new mapping if we haven't seen it yet
-        if logical and uuid not in self.uuid_to_cid:
-            self.uuid_to_cid[uuid] = logical
-            self.cid_to_uuid[logical] = uuid
-            print(f"[Mapping] logical_id={logical} ↔ uuid={uuid}")
-    
-      # --- Refresh the UUID set of ground-truth stragglers ---
-      resolved = {
-        self.cid_to_uuid[c]
-        for c in self.ground_truth_cids               # {"client_0", "client_1", ...}
-        if c in self.cid_to_uuid                      # only keep resolved ones
-    }
-
-      # Merge with any previously known UUIDs
-      self.ground_truth_flower_ids |= resolved
-
-      print(f"[Round Mapping Update] ground_truth_flower_ids now: {self.ground_truth_flower_ids}")
-
 
     def _predict_stragglers_from_score(self, T_max, client_ids):
       """Return set of predicted stragglers using s_c=1-As."""
