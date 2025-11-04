@@ -378,12 +378,11 @@ class GPAFStrategy(FedAvg):
         # continue to next client so we still reach the mapping update
         
     # ---- in your Strategy class ----
-   
-    #mapping clients id in stragglers
-    # ---- in Strategy.__init__ ----
 
-    def _observe_mapping(self, results):
+
+    def _on_round_end_update_mapping(self, server_round, results):
       """Capture mappings from Flower UUID (runtime id) to logical id when available."""
+      print(f"[Mapping] mappingg ===========")
       for client_proxy, fit_res in results:
         uuid = client_proxy.cid  # Flower runtime ID (string)
         # The client should report its logical id once in fit metrics
@@ -408,18 +407,6 @@ class GPAFStrategy(FedAvg):
 
       print(f"[Round Mapping Update] ground_truth_flower_ids now: {self.ground_truth_flower_ids}")
 
-
-    def _on_round_end_update_mapping(self, server_round, results):
-      """Update logical↔uuid mapping and refresh ground-truth UUIDs each round."""
-      self._observe_mapping(results)
-
-      # Fallback: if your provided IDs are already UUIDs (not "client_0" labels)
-      if not self.ground_truth_flower_ids:
-        maybe_uuid = all(id_.isdigit() or id_.startswith("8") for id_ in self.ground_truth_cids)
-        if maybe_uuid:
-            self.ground_truth_flower_ids = set(self.ground_truth_cids)
-
-      print(f"[Round {server_round}] Ground-truth UUIDs: {self.ground_truth_flower_ids}")
 
     def _predict_stragglers_from_score(self, T_max, client_ids):
       """Return set of predicted stragglers using s_c=1-As."""
