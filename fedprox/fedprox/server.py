@@ -388,6 +388,7 @@ class GPAFStrategy(FedAvg):
         uuid = client_proxy.cid  # Flower runtime ID (string)
         # The client should report its logical id once in fit metrics
         logical = fit_res.metrics.get("logical_id") if fit_res.metrics else None
+        print(f"[Mapping]rtertr ====logical_id={logical} and {self.uuid_to_cid}")
 
         # Register new mapping if we haven't seen it yet
         if logical and uuid not in self.uuid_to_cid:
