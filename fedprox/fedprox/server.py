@@ -463,7 +463,7 @@ class GPAFStrategy(FedAvg):
           rec = {
             "round": server_round,
             "client_id": uuid,
-            "logical_id": logical,
+            "logical_id": logical_idx,
             "T_c": self.training_times.get(uuid, float("nan")),
             "T_max": T_max,
             "s_c": scores.get(uuid, float("nan")),
