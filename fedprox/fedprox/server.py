@@ -716,19 +716,21 @@ class GPAFStrategy(FedAvg):
         print(f'ss {server_round} and ee {self.total_rounds}')
         progress = server_round / self.total_rounds
         
-        
-        # Early phase (0-20%): Prioritize reliability for stable initial model
-        alpha_1, alpha_2 = 0.7, 0.3
-        """
-        else:
-            # Late phase (80-100%): Prioritize fairness for comprehensive coverage
-            alpha_1, alpha_2 = 0.4, 0.6
-       
+        if progress < 0.4 :
+          # Early phase (0-20%): Prioritize reliability for stable initial model
+          alpha_1, alpha_2 = 0.7, 0.3
+
         elif progress < 0.8:
             # Middle phase (20-80%): Balanced approach
-            alpha_1, alpha_2 = 0.6, 0.4
+            alpha_1, alpha_2 = 0.5, 0.5
         
-        """
+   
+        else:
+            # Late phase (80-100%): Prioritize fairness for comprehensive coverage
+            alpha_1, alpha_2 = 0.3, 0.7
+       
+       
+       
         return alpha_1, alpha_2
     
     
@@ -1016,7 +1018,7 @@ class GPAFStrategy(FedAvg):
       # =================================================================
       clusters = defaultdict(list)
     
-      if server_round% 2!=0 and participated_available and in_warmup_phase==False:
+      if server_round% 10!=0 and participated_available and in_warmup_phase==False:
         print(f"\n{'─'*80}")
         print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
        
