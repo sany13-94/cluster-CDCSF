@@ -7,6 +7,8 @@ from torch.cuda.amp import autocast, GradScaler
 import base64
 import pickle
 import datetime
+from collections import defaultdict, deque
+
 from numpy.linalg import norm
 from matplotlib import cm
 from matplotlib.colors import ListedColormap
@@ -77,6 +79,7 @@ class GPAFStrategy(FedAvg):
         batch_size=32,
         ground_truth_stragglers=None,
          total_rounds: int = 15,
+           fair_window: int = 50,
          
    evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
   
@@ -111,6 +114,11 @@ class GPAFStrategy(FedAvg):
         self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
         self.ground_truth_flower_ids = set()  # will be filled as clients appear
         self.all_known_clients = set()
+        self.fair_window = int(fair_window)
+        self.selection_counts = defaultdict(int)            # lifetime counts per client
+        self.sel_window = defaultdict(lambda: deque(maxlen=self.fair_window))  # sliding window 0/1
+        self.total_rounds_completed = 0
+
         # mappings
 
         # straggler ground truth (fill with your logical ids, e.g., {"client_0", ...})
@@ -135,7 +143,6 @@ class GPAFStrategy(FedAvg):
         # Tracking
         self.training_times = {}
         self.selection_counts = {}
-        self.participated_clients = set()
         self.client_assignments = {}
         self.participated_clients = set()
         self.client_assignments = {}
