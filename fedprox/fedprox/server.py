@@ -184,7 +184,6 @@ class GPAFStrategy(FedAvg):
         self.beta = beta  # Penalty strength parameter
         
         # Fairness Tracking
-        self.selection_counts = {}  # v_c - number of times client selected
         self.total_rounds_completed = 0  # T - total rounds
         
         # Weight Adaptation
