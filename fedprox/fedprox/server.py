@@ -99,7 +99,7 @@ class GPAFStrategy(FedAvg):
         self.clustering_interval = 8
         # Simple participation counter
         self.client_participation_count = {}  # client_id -> number of times selected
-        
+        self.debug=True
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
