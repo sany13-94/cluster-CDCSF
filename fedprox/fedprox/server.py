@@ -668,7 +668,7 @@ class GPAFStrategy(FedAvg):
         return fairness_scores
     
       """
-    def compute_fairness_scores_global(self, client_ids: List[str]) -> Dict[str, float]:
+    def compute_fairness_scores(self, client_ids: List[str]) -> Dict[str, float]:
       # Global counts
       T = max(1, int(self.total_rounds_completed))  # rounds completed so far
       # total registered/known clients (fixed-ish); prefer a fixed n if you have one
@@ -692,7 +692,7 @@ class GPAFStrategy(FedAvg):
         # print(f"[Fair(Global)] {cid}: v={v_c}, ideal={ideal:.2f}, R={R_c:.2f}, f={f_s:.3f}")
 
       return fairness_scores   
-         
+
     def compute_global_selection_scores(
         self, 
         client_ids: List[str], 
