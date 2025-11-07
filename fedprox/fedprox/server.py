@@ -120,10 +120,7 @@ class GPAFStrategy(FedAvg):
         self.selection_counts = defaultdict(int)
         self.accuracy_history = defaultdict(float)
         self._current_accuracies = {}
-        # ... existing initialization ...
-        # Core parameters from corrected methodology
-
-        # Validation tracking
+       
         self.validation_history = []  # Track predictions vs ground truth per round
         
        
@@ -839,7 +836,31 @@ class GPAFStrategy(FedAvg):
     
       
   
+    def _flatten_prototypes(self, proto_dict: dict) -> np.ndarray:
+      """
+    Turn a dict {class_id: feature_vector} into a single fixed-length vector.
+    We concatenate class-wise prototypes in sorted class order. If you prefer
+    averaging, replace with: return np.mean(np.stack(list(proto_dict.values())), axis=0)
+      """
+      # Sort by class key to keep a consistent layout
+      keys = sorted(proto_dict.keys())
+      vecs = [np.asarray(proto_dict[k]).ravel() for k in keys if proto_dict[k] is not None]
+      if not vecs:
+        return np.zeros((1,), dtype=float)
+      return np.concatenate(vecs, axis=0)
 
+
+    def _prepare_tsne_inputs(self, all_prototypes_list: list[dict], all_client_ids: list[str]) -> tuple[np.ndarray, list[str]]:
+      """
+      Map each client's prototype dict -> 1D vector so t-SNE can run on a matrix [n_clients x d_flat].
+      Returns (X, ids) where X is float32 matrix for t-SNE and ids are aligned client ids.
+      """
+      X = [self._flatten_prototypes(p) for p in all_prototypes_list]
+      # pad to same length (for safety if some clients miss classes)
+      maxd = max(v.shape[0] for v in X)
+      Xp = [np.pad(v, (0, maxd - v.shape[0]), mode="constant") if v.shape[0] < maxd else v for v in X]
+      return np.asarray(Xp, dtype=np.float32), list(all_client_ids)
+    
     def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
     
       # 1. Flatten prototypes: one vector per client
@@ -1132,15 +1153,24 @@ class GPAFStrategy(FedAvg):
                         print(f"  Cluster {k}: {len(cids_k)} clients")
 
                 # optional viz
-                try:
-                    self._visualize_clusters(prototypes=all_prototypes_list,
-                                             client_ids=all_client_ids,
-                                             server_round=server_round,
-                                             true_domain_map=None)
-                except Exception:
-                    pass
-            else:
-                print(f"\n[Clustering Skipped] Need {self.num_clusters} clients with prototypes,"
+                # === VISUALIZATION ===
+            try:
+                if len(all_prototypes_list) >= self.num_clusters:
+                # Build per-client cluster labels aligned with all_client_ids
+                  cluster_ids = [int(global_assignments.get(cid, -1)) for cid in all_client_ids]
+
+                  self._visualize_clusters(
+            prototypes=all_prototypes_list,      # or embeddings=X
+            client_ids=all_client_ids,
+            server_round=server_round,
+            cluster_ids=cluster_ids,             # <-- pass cluster assignments for coloring
+            true_domain_map=None                 # optionally pass ground-truth domains if you have them
+        )
+            except Exception as viz_err:
+                if self.debug:
+                    print(f"[Viz] Skipped t-SNE plot: {viz_err}")
+                else:
+                    print(f"\n[Clustering Skipped] Need {self.num_clusters} clients with prototypes,"
                       f" have {len(clients_with_prototypes)}")
 
         # --------------------- PHASE 2: ORGANIZE CLIENTS -------------------
