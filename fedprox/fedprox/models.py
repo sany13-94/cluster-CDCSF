@@ -153,19 +153,6 @@ def resnet18_pathmnist():
 
 class ModelCDCSF(nn.Module):
 
-    """
-    Simplified model for federated learning with prototype extraction.
-    
-    Architecture:
-    - Feature extractor: ResNet18 backbone
-    - Classification head: Linear layer for final prediction
-    
-    Returns:
-    - h: Feature embeddings from backbone (for prototype extraction)
-    - _: Placeholder (kept for compatibility)
-    - y: Final predictions (for classification)
-    """
-
     def __init__(self, out_dim=256, n_classes=9):
         """
         Args:

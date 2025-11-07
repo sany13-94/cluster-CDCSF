@@ -100,37 +100,7 @@ def load_datasets(  # pylint: disable=too-many-arguments
       )
       trainloaders = []
       valloaders = []
-      
-    
-      #testloaders=DataLoader(testset, batch_size=batch_size)
-      
-    else:
-     
-      datasets, testset ,validsets, New_split= _partition_data(
-        num_clients,
-        config.dataset_name,
-        transform=transform,
-        iid=config.iid,
-        balance=config.balance,
-        power_law=config.power_law,
-        seed=seed,
-        domain_shift=domain_shift,
-       
-       
-    )
-      trainloaders = []
-      valloaders = []
-      for i,trainset in enumerate(datasets):
-        
-        trainloaders.append(DataLoader(trainset, batch_size=batch_size, shuffle=True))
-        valloaders.append(DataLoader(validsets[i], batch_size=batch_size))
-    
-      testloaders=DataLoader(testset, batch_size=batch_size)
 
-      if New_split==True:
-       print(f'save New splitting')
-       # Save the splits
-
-       save_splits(num_clients,trainloaders, valloaders, testloaders)
+       
         
     return trainset, valsets,domain_assignment

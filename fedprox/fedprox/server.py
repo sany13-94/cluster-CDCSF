@@ -672,49 +672,94 @@ class GPAFStrategy(FedAvg):
     # Stochastic selection with temperature, exploration, recent-cap
     # ---------------------------------------------------------------------
     def _sample_probabilistic(self,
-                              cids: List[str],
-                              score_map: Dict[str, float],
-                              K: int,
-                              temp: float = 0.6,
-                              p_rand: float = 0.10,
-                              recent_cap: int = 3) -> List[str]:
-        if K <= 0 or not cids:
+                          cids: list[str],
+                          score_map: dict[str, float],
+                          K: int,
+                          temp: float = 0.6,
+                          p_rand: float = 0.10,
+                          recent_cap: int = 3) -> list[str]:
+
+      if K <= 0 or not cids:
+        return []
+
+      # Scores vector
+      scores = np.array([float(score_map.get(cid, 0.0)) for cid in cids], dtype=float)
+
+      # Recent participation within sliding window
+      recent = np.array([sum(self.sel_window.get(str(cid), [])) for cid in cids], dtype=float)
+
+      # Eligible mask: respect recent_cap (temporarily ineligible become -inf ⇒ prob 0)
+      eligible_mask = recent <= float(recent_cap)
+      scores_masked = scores.copy()
+      scores_masked[~eligible_mask] = -np.inf
+
+      # Build softmax probabilities over ELIGIBLE items
+      if np.any(np.isfinite(scores_masked)):
+        s = scores_masked - np.nanmax(scores_masked[np.isfinite(scores_masked)])
+      else:
+        s = scores_masked  # all -inf ⇒ no eligible
+
+      probs = np.zeros_like(scores_masked, dtype=float)
+      finite = np.isfinite(s)
+      if finite.any():
+        probs[finite] = np.exp(s[finite] / max(1e-6, temp))
+        total = probs.sum()
+        if total > 0:
+            probs /= total
+
+      idx = np.arange(len(cids))
+      eligible_idx = idx[probs > 0.0]  # strictly positive prob support
+
+      # If nothing is eligible, fall back to uniform over clients respecting recent_cap if possible
+      if len(eligible_idx) == 0:
+        fallback_idx = idx[eligible_mask]
+        if len(fallback_idx) == 0:
+            # no one eligible at all; return empty (or relax recent_cap)
             return []
-        scores = np.array([float(score_map.get(cid, 0.0)) for cid in cids], dtype=float)
+        take = min(K, len(fallback_idx))
+        return list(map(lambda i: cids[i], np.random.choice(fallback_idx, size=take, replace=False)))
 
-        # recent participation within sliding window
-        recent = np.array([sum(self.sel_window.get(cid, [])) for cid in cids], dtype=float)
-        ok = recent <= float(recent_cap)
-        scores[~ok] = -np.inf  # temporarily ineligible
+      # Exploration picks: sample from eligible set only
+      n_rand = int(round(p_rand * K))
+      n_rand = min(n_rand, len(eligible_idx))
+      take_rand = np.random.choice(eligible_idx, size=n_rand, replace=False) if n_rand > 0 else np.array([], dtype=int)
 
-        if np.any(np.isfinite(scores)):
-            s = scores - np.nanmax(scores[np.isfinite(scores)])
-        else:
-            s = scores
+      # Remaining picks: probabilistic from remaining eligible pool
+      remaining = K - len(take_rand)
+      if remaining <= 0:
+        return [cids[i] for i in take_rand]
 
-        probs = np.exp(np.where(np.isfinite(s), s, -1e9) / max(1e-6, temp))
-        if probs.sum() <= 0:
-            probs = np.ones_like(probs)
-        probs /= probs.sum()
+      pool = np.setdiff1d(eligible_idx, take_rand, assume_unique=False)
+      if len(pool) == 0:
+        return [cids[i] for i in take_rand]
 
-        idx = np.arange(len(cids))
-        n_rand = min(int(round(p_rand * K)), len(cids))
-        take_rand = np.random.choice(idx, size=n_rand, replace=False) if n_rand > 0 else np.array([], dtype=int)
+      probs_pool = probs[pool]
+      # Support with positive probability
+      support = pool[probs_pool > 0.0]
 
-        remaining = max(0, K - len(take_rand))
-        pool = np.setdiff1d(idx, take_rand, assume_unique=False)
-        if len(pool) == 0:
-            chosen = take_rand
-        else:
-            probs_pool = probs[pool] / probs[pool].sum()
-            take_prob = np.random.choice(pool, size=min(remaining, len(pool)), replace=False, p=probs_pool)
-            chosen = np.concatenate([take_rand, take_prob])
-
+      if len(support) >= remaining:
+        # Sample from positive-probability support with given p
+        p_support = probs[support] / probs[support].sum()
+        take_prob = np.random.choice(support, size=remaining, replace=False, p=p_support)
+        chosen = np.concatenate([take_rand, take_prob])
         return [cids[i] for i in chosen]
 
-    # ---------------------------------------------------------------------
-    # Update sliding windows once per round
-    # ---------------------------------------------------------------------
+      # If not enough positive-prob entries to meet 'remaining', take all support,
+      # and fill the rest uniformly from the leftover pool (without p).
+      chosen = list(take_rand)
+      if len(support) > 0:
+        chosen.extend(np.random.choice(support, size=len(support), replace=False))
+
+      leftover_pool = np.setdiff1d(pool, np.array(chosen, dtype=int), assume_unique=False)
+      fill = remaining - (len(chosen) - len(take_rand))
+      if fill > 0 and len(leftover_pool) > 0:
+        fill = min(fill, len(leftover_pool))
+        chosen.extend(np.random.choice(leftover_pool, size=fill, replace=False))
+
+      return [cids[i] for i in chosen]
+      # ---------------------------------------------------------------------
+      # Update sliding windows once per round
+      # ---------------------------------------------------------------------
     def _update_selection_windows(self, selected_cids: List[str]) -> None:
         touched = set(selected_cids)
         for cid in self.all_known_clients:
@@ -1291,9 +1336,22 @@ class GPAFStrategy(FedAvg):
             score_map = {cid: float(s) for cid, s in zip(cids_k, score_vals)}
 
             # stochastic selection (prevents lock-in)
+
+            # Compute how many are eligible under recent_cap (to avoid asking for too many)
+            recent = np.array([sum(self.sel_window.get(str(cid), [])) for cid in cids_k], dtype=float)
+            eligible_count = int((recent <= 3).sum())  # use your recent_cap value
+
+            Kk_effective = min(Kk, max(eligible_count, 1))  # never request > eligible
             choose = self._sample_probabilistic(
-                cids=cids_k, score_map=score_map, K=Kk, temp=0.6, p_rand=0.10, recent_cap=3
-            )
+    cids=cids_k,
+    score_map=score_map,
+    K=Kk_effective,
+    temp=0.6,
+    p_rand=0.10,
+    recent_cap=3,
+)
+
+            
             selected_clients_cids.extend(choose)
 
             print(f"Selected {len(choose)}/{len(cids_k)} clients")
