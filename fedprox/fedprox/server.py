@@ -110,6 +110,7 @@ class GPAFStrategy(FedAvg):
         self.cid_to_uuid = {}     # {"client_0": "8325..."}
         self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
         self.ground_truth_flower_ids = set()  # will be filled as clients appear
+        self.all_known_clients = set()
         # mappings
 
         # straggler ground truth (fill with your logical ids, e.g., {"client_0", ...})
