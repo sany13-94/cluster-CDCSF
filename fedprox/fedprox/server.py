@@ -112,6 +112,11 @@ class GPAFStrategy(FedAvg):
         self.ground_truth_flower_ids = set()  # will be filled as clients appear
         # mappings
 
+        self._round_t0 = {}       # round -> start wall-clock time
+        self.cum_time_sec = 0.0   # accumulated time across rounds
+        self.fig3_rows = []       # list of {"round","elapsed_sec","cum_time_sec","avg_acc"}
+
+        self.results_dir=Path("/kaggle/working/cluster-CDCSF/fedprox")
         # straggler ground truth (fill with your logical ids, e.g., {"client_0", ...})
         self._map_written = False
         
@@ -388,14 +393,7 @@ class GPAFStrategy(FedAvg):
         As = T_max / (T_c + self.beta * T_max) if (T_c > 0 and T_max > 0) else 0.0
         s_c = 1.0 - As
         scores[cid] = s_c
-      """
-      if self.use_topk:
-        # Predict exactly as many as we injected (good for clean evaluation)
-        k = len(self.ground_truth_flower_ids)  # see mapping below
-        # sort by highest score (slowest)
-        predicted = set(sorted(scores, key=scores.get, reverse=True)[:k])
-      else:
-      """
+     
       # Thresholded prediction
       predicted = {cid for cid, s in scores.items() if s >= self.theta}
       return predicted, scores
@@ -560,21 +558,7 @@ class GPAFStrategy(FedAvg):
                     client_accuracy = float(res.metrics["accuracy"])
                     self._current_accuracies[client_id] = client_accuracy
                     
-                    with self.mlflow.start_run(run_id=self.server_run_id):
-                        self.mlflow.log_metrics({
-                            f"accuracy_client_{client_id}": client_accuracy
-                        }, step=server_round)
-                else:
-                    print(f"[Warning] Client {client_id} did not report 'accuracy' in eval_res.metrics.")
-
-                if "features" in res.metrics and "labels" in res.metrics:
-                    try:
-                        features_np = pickle.loads(base64.b64decode(res.metrics.get("features").encode('utf-8')))
-                        labels_np = pickle.loads(base64.b64decode(res.metrics.get("labels").encode('utf-8')))
-                        pass
-                    except Exception as e:
-                        print(f"[Warning] Failed to decode features/labels for client {client_id}: {e}")
-
+             
             if self._current_accuracies:
                 aggregated_accuracy = sum(self._current_accuracies.values()) / len(self._current_accuracies)
                 print(f"[Server] Round {server_round}: Aggregated Average Accuracy: {aggregated_accuracy:.4f}")
@@ -595,11 +579,54 @@ class GPAFStrategy(FedAvg):
         else:
             print(f"[Server] Round {server_round}: No evaluation results received.")
             aggregated_accuracy = 0.0
+        
+        # === NEW: accumulate wall-clock time and log for Figure 3 ===
+        t0 = self._round_t0.pop(server_round, None)
+        elapsed = (time.time() - t0) if t0 is not None else 0.0
+        self.cum_time_sec += elapsed
+
+        # Store one row: X=cum_time_sec, Y=avg_acc
+        self.fig3_rows.append({
+        "round": int(server_round),
+        "elapsed_sec": float(elapsed),
+        "cum_time_sec": float(self.cum_time_sec),
+        "avg_acc": float(aggregated_accuracy),
+    })
+
+        # Save CSV + PNG (can be every round; last one is your final figure)
+        self._save_fig3_time_vs_acc()
             
         return None, {"accuracy": aggregated_accuracy}
    
   
+    def _save_fig3_time_vs_acc(self):
+      """Save/refresh Figure 3: Avg accuracy vs cumulative training time."""
+      if not self.fig3_rows:
+        return
 
+      df = pd.DataFrame(self.fig3_rows).sort_values("round")
+      # safety: recompute cum_time if needed
+      if "cum_time_sec" not in df.columns:
+        df["cum_time_sec"] = df["elapsed_sec"].cumsum()
+
+      tag = str(self.method_name).replace(" ", "_")
+      csv_path = self.results_dir / f"fig3_time_vs_acc_{tag}.csv"
+      png_path = self.results_dir / f"fig3_time_vs_acc_{tag}.png"
+      df.to_csv(csv_path, index=False)
+
+      # X = cumulative time, Y = avg accuracy
+      plt.figure(figsize=(9, 5))
+      plt.plot(df["cum_time_sec"], df["avg_acc"], marker="o", linewidth=2)
+      plt.xlabel("Cumulative training time (s)")
+      plt.ylabel("Average accuracy")
+      plt.title(f"Average Accuracy vs Cumulative Time — {self.method_name}")
+      plt.grid(True, linestyle="--", alpha=0.4)
+      plt.tight_layout()
+      plt.savefig(png_path, dpi=200)
+      plt.close()
+
+      print(f"[Fig3] Saved CSV -> {csv_path}")
+      print(f"[Fig3] Saved PNG -> {png_path}")
     def compute_reliability_scores(self, client_ids: List[str]) -> Dict[str, float]:
         
         reliability_scores = {}
@@ -1004,7 +1031,9 @@ class GPAFStrategy(FedAvg):
       # Get all available clients
       all_clients = client_manager.all()
       available_client_cids = list(all_clients.keys())
-
+      # ---- start-of-round timer ----
+      
+      self._round_t0[server_round] = time.time()
       if not available_client_cids:
         print(f"[Round {server_round}] No clients available.")
         return []
