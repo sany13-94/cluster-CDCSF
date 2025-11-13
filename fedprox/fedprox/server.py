@@ -159,6 +159,7 @@ class GPAFStrategy(FedAvg):
         phase_threshold: int = 20  # Round to switch weight emphasis
        
         self.total_rounds=total_rounds
+        method_name="CDCSF"
 
         # Store ground truth straggler labels
         self.ground_truth_stragglers = ground_truth_stragglers  # Set of client IDs
@@ -1491,8 +1492,8 @@ class GPAFStrategy(FedAvg):
         aggfunc="mean",
     ).sort_index(axis=0).sort_index(axis=1)
 
-     tag = self.method_name.replace(" ", "_")
-     csv_path = self.results_dir / f"proto_heatmap_{tag}.csv"
+     #tag = self.method_name.replace(" ", "_")
+     csv_path = self.results_dir / f"proto_heatmap_CDCSF.csv"
      table.to_csv(csv_path)
      print(f"[ProtoHeatmap] Saved matrix CSV -> {csv_path}")
 
@@ -1501,7 +1502,7 @@ class GPAFStrategy(FedAvg):
                  .agg(lambda x: np.bincount([d for d in x if d >= 0]).argmax()
                       if any(np.array(x) >= 0) else -1))
 
-     dom_csv = self.results_dir / f"proto_client_domains_{tag}.csv"
+     dom_csv = self.results_dir / f"proto_client_domains_CDCSF.csv"
      dom_agg.to_csv(dom_csv, header=["domain_id"])
      print(f"[ProtoHeatmap] Saved client→domain map -> {dom_csv}")
 
@@ -1529,7 +1530,7 @@ class GPAFStrategy(FedAvg):
      plt.title(f"Prototype-based selection pattern — {self.method_name}")
      plt.tight_layout()
 
-     png_path = self.results_dir / f"proto_heatmap_{tag}.png"
+     png_path = self.results_dir / f"proto_heatmap_.png"
      plt.savefig(png_path, dpi=200)
      plt.close()
      print(f"[ProtoHeatmap] Saved heatmap PNG -> {png_path}")
