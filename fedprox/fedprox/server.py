@@ -102,7 +102,8 @@ class GPAFStrategy(FedAvg):
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
         map_path="client_id_mapping1.csv"
-        
+        self.proto_rows = []   # list of dicts: {"round", "client_id", "proto_score", "domain_id"}
+
         
         self.theta =0.13         # optional threshold for s_c
         self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
@@ -272,6 +273,7 @@ class GPAFStrategy(FedAvg):
             if write_header:
                 w.writeheader()
             w.writerows(rows)
+
     def aggregate_fit(
         self,
         server_round: int,
@@ -377,6 +379,8 @@ class GPAFStrategy(FedAvg):
             print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
             print("="*80)
             self._save_all_results()
+            # NEW: prototype-based heatmap
+            self._save_prototype_heatmap()
         return ndarrays_to_parameters(aggregated_params), {}
 
       except Exception as e:
@@ -518,7 +522,78 @@ class GPAFStrategy(FedAvg):
         print(f"Validation results saved to {filename}")
         return df
 
-    
+    def _log_selected_client_prototypes_for_heatmap(
+    self,
+    server_round: int,
+    selected_clients_cids: list,
+    all_clients,
+):
+      """
+      For each selected client in this round:
+      - Fetch its prototypes + domain_id via get_properties("prototypes")
+      - Compute a scalar proto_score
+      - Append a row {round, client_id, proto_score, domain_id} to self.proto_rows
+      """
+      if not selected_clients_cids:
+        return
+
+      print(f"[Heatmap] Logging proto scores for round {server_round} | {len(selected_clients_cids)} clients")
+
+      for cid in selected_clients_cids:
+        if cid not in all_clients:
+            continue
+
+        client_proxy = all_clients[cid]
+        try:
+            # Ask client for its stored prototypes
+            get_protos_res = client_proxy.get_properties(
+                ins=GetPropertiesIns(config={"request": "prototypes"}),
+                timeout=15.0,
+                group_id=None,
+            )
+
+            prototypes_encoded = get_protos_res.properties.get("prototypes")
+            class_counts_encoded = get_protos_res.properties.get("class_counts")
+            domain_id_raw = get_protos_res.properties.get("domain_id", None)
+
+            # decode domain id if present
+            try:
+                domain_id = int(domain_id_raw) if domain_id_raw is not None else -1
+            except Exception:
+                domain_id = -1
+
+            if not prototypes_encoded or not class_counts_encoded:
+                print(f"  [Heatmap] Client {cid}: no prototypes available")
+                continue
+
+            try:
+                prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
+                # class_counts = pickle.loads(base64.b64decode(class_counts_encoded))  # optional
+            except Exception as e:
+                print(f"  [Heatmap] Client {cid}: decode error: {e}")
+                continue
+
+            if not isinstance(prototypes, dict):
+                print(f"  [Heatmap] Client {cid}: prototypes not a dict, skipping")
+                continue
+
+            proto_score = self._compute_proto_score_from_dict(prototypes)
+
+            try:
+                cid_int = int(cid)
+            except Exception:
+                cid_int = cid
+
+            self.proto_rows.append({
+                "round": int(server_round),
+                "client_id": cid_int,
+                "proto_score": float(proto_score),
+                "domain_id": domain_id,
+            })
+
+        except Exception as e:
+            print(f"  [Heatmap] Client {cid}: get_properties failed: {e}")
+
     def _fedavg_parameters(
         self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
     ) -> List[np.ndarray]:
@@ -627,6 +702,7 @@ class GPAFStrategy(FedAvg):
 
       print(f"[Fig3] Saved CSV -> {csv_path}")
       print(f"[Fig3] Saved PNG -> {png_path}")
+      
     def compute_reliability_scores(self, client_ids: List[str]) -> Dict[str, float]:
         
         reliability_scores = {}
@@ -666,35 +742,7 @@ class GPAFStrategy(FedAvg):
         
         return reliability_scores
     
-    """
-    def compute_fairness_scores(self, client_ids: List[str]) -> Dict[str, float]:
-       
-        fairness_scores = {}
-        N = len(client_ids)
-        T = self.total_rounds_completed
-    
-        # Calculate total actual selections made
-        total_selections = sum(self.selection_counts.values())
-    
-        # Ideal selections per client based on ACTUAL selections
-        if total_selections > 0:
-          ideal_selections = total_selections / N
-        else:
-          ideal_selections = 1.0
-    
-        for client_id in client_ids:
-          v_c = self.selection_counts.get(client_id, 0)
-          R_c = v_c / ideal_selections if ideal_selections > 0 else 0.0
-          fairness_score = 1.0 / (1.0 + R_c)
-          fairness_scores[client_id] = float(fairness_score)
-        
-        
-            
-          print(f"  Client {client_id}: v_c={v_c}, R_c={R_c:.3f}, f_s={fairness_score:.4f}")
-        
-        return fairness_scores
-    
-      """
+   
     def compute_fairness_scores(self, client_ids: List[str]) -> Dict[str, float]:
       # Global counts
       T = max(1, int(self.total_rounds_completed))  # rounds completed so far
@@ -1392,8 +1440,109 @@ class GPAFStrategy(FedAvg):
     
       print(f"{'='*80}\n")
 
+            
+
+      # NEW: log prototype scores of selected clients for heatmap
+      self._log_selected_client_prototypes_for_heatmap(
+          server_round=server_round,
+          selected_clients_cids=selected_clients_cids,
+          all_clients=all_clients,
+      )
 
       return instructions
+
+   
+   def _compute_proto_score_from_dict(self, prototypes: dict) -> float:
+    """
+    Collapse a dict[class_id] -> embedding vector into a single scalar.
+    Simple: mean of all coordinates across all prototype vectors.
+    """
+    if not prototypes:
+        return 0.0
+
+    vecs = []
+    for v in prototypes.values():
+        if v is None:
+            continue
+        v_np = np.asarray(v)
+        if v_np.ndim == 1:
+            vecs.append(v_np)
+        else:
+            vecs.append(v_np.reshape(-1))
+
+    if not vecs:
+        return 0.0
+
+    all_vecs = np.stack(vecs, axis=0)
+    return float(all_vecs.mean())
+
+   def _save_prototype_heatmap(self):
+    """
+    Build a (round x client) matrix of proto_score and save:
+      - CSV with the matrix
+      - PNG heatmap
+    Color shows how feature-space distribution of selected clients evolves.
+    """
+    if not self.proto_rows:
+        print("[ProtoHeatmap] No prototype logs, skipping.")
+        return
+
+    df = pd.DataFrame(self.proto_rows)
+
+    # Pivot: rows = rounds, columns = client_id, values = proto_score
+    table = df.pivot_table(
+        index="round",
+        columns="client_id",
+        values="proto_score",
+        aggfunc="mean",
+    ).sort_index(axis=0).sort_index(axis=1)
+
+    tag = getattr(self, "method_name", "Ours-EM").replace(" ", "_")
+    csv_path = self.results_dir / f"proto_heatmap_{tag}.csv"
+    table.to_csv(csv_path)
+    print(f"[ProtoHeatmap] Saved matrix CSV -> {csv_path}")
+
+    # domain per client (majority over logged rounds) – optional
+    dom_agg = (df.groupby("client_id")["domain_id"]
+                 .agg(lambda x: np.bincount([d for d in x if d >= 0]).argmax()
+                      if any(np.array(x) >= 0) else -1))
+    dom_path = self.results_dir / f"proto_client_domains_{tag}.csv"
+    dom_agg.to_csv(dom_path, header=["domain_id"])
+    print(f"[ProtoHeatmap] Saved client->domain map -> {dom_path}")
+
+    # --- Heatmap ---
+    plt.figure(figsize=(10, 6))
+    im = plt.imshow(
+        table.values.T,          # shape: (num_clients, num_rounds)
+        aspect="auto",
+        origin="lower",
+        cmap="viridis",          # continuous colormap for proto_score
+    )
+    plt.colorbar(im, label="Prototype score")
+
+    rounds = table.index.to_list()
+    clients = table.columns.to_list()
+
+    plt.xticks(
+        ticks=np.arange(len(rounds)),
+        labels=rounds,
+        rotation=45,
+        ha="right",
+    )
+    plt.yticks(
+        ticks=np.arange(len(clients)),
+        labels=[f"Client {c}" for c in clients],
+    )
+
+    plt.xlabel("Rounds")
+    plt.ylabel("Clients")
+    plt.title(f"Prototype-based client selection pattern — {getattr(self, 'method_name', 'Method')}")
+    plt.tight_layout()
+
+    png_path = self.results_dir / f"proto_heatmap_{tag}.png"
+    plt.savefig(png_path, dpi=200)
+    plt.close()
+    print(f"[ProtoHeatmap] Saved heatmap PNG -> {png_path}")
 
     def save_participation_stats(self, filename="client_participation.csv"):
         """Save participation statistics at the end of training"""
