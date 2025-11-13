@@ -1527,7 +1527,7 @@ class GPAFStrategy(FedAvg):
     )
      plt.xlabel("Round")
      plt.ylabel("Client ID (logical)")
-     plt.title(f"Prototype-based selection pattern — {self.method_name}")
+     plt.title(f"Prototype-based selection pattern ")
      plt.tight_layout()
 
      png_path = self.results_dir / f"proto_heatmap_CDCSF.png"
