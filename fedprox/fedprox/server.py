@@ -610,9 +610,8 @@ class GPAFStrategy(FedAvg):
       if "cum_time_sec" not in df.columns:
         df["cum_time_sec"] = df["elapsed_sec"].cumsum()
 
-      tag = str(self.method_name).replace(" ", "_")
-      csv_path = self.results_dir / f"fig3_time_vs_acc_{tag}.csv"
-      png_path = self.results_dir / f"fig3_time_vs_acc_{tag}.png"
+      csv_path = self.results_dir / f"fig3_time_vs_acc_CDCSF.csv"
+      png_path = self.results_dir / f"fig3_time_vs_acc_CDCSF.png"
       df.to_csv(csv_path, index=False)
 
       # X = cumulative time, Y = avg accuracy
@@ -620,7 +619,7 @@ class GPAFStrategy(FedAvg):
       plt.plot(df["cum_time_sec"], df["avg_acc"], marker="o", linewidth=2)
       plt.xlabel("Cumulative training time (s)")
       plt.ylabel("Average accuracy")
-      plt.title(f"Average Accuracy vs Cumulative Time — {self.method_name}")
+      plt.title(f"Average Accuracy vs Cumulative Time — CDCSF")
       plt.grid(True, linestyle="--", alpha=0.4)
       plt.tight_layout()
       plt.savefig(png_path, dpi=200)
