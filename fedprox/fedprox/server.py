@@ -702,7 +702,7 @@ class GPAFStrategy(FedAvg):
 
       print(f"[Fig3] Saved CSV -> {csv_path}")
       print(f"[Fig3] Saved PNG -> {png_path}")
-      
+
     def compute_reliability_scores(self, client_ids: List[str]) -> Dict[str, float]:
         
         reliability_scores = {}
@@ -1452,16 +1452,16 @@ class GPAFStrategy(FedAvg):
       return instructions
 
    
-   def _compute_proto_score_from_dict(self, prototypes: dict) -> float:
-    """
-    Collapse a dict[class_id] -> embedding vector into a single scalar.
-    Simple: mean of all coordinates across all prototype vectors.
-    """
-    if not prototypes:
+    def _compute_proto_score_from_dict(self, prototypes: dict) -> float:
+     """
+     Collapse a dict[class_id] -> embedding vector into a single scalar.
+     Simple: mean of all coordinates across all prototype vectors.
+     """
+     if not prototypes:
         return 0.0
 
-    vecs = []
-    for v in prototypes.values():
+     vecs = []
+     for v in prototypes.values():
         if v is None:
             continue
         v_np = np.asarray(v)
@@ -1470,79 +1470,79 @@ class GPAFStrategy(FedAvg):
         else:
             vecs.append(v_np.reshape(-1))
 
-    if not vecs:
+     if not vecs:
         return 0.0
 
-    all_vecs = np.stack(vecs, axis=0)
-    return float(all_vecs.mean())
+     all_vecs = np.stack(vecs, axis=0)
+     return float(all_vecs.mean())
 
-   def _save_prototype_heatmap(self):
-    """
-    Build a (round x client) matrix of proto_score and save:
+    def _save_prototype_heatmap(self):
+     """
+     Build a (round x client) matrix of proto_score and save:
       - CSV with the matrix
       - PNG heatmap
-    Color shows how feature-space distribution of selected clients evolves.
-    """
-    if not self.proto_rows:
+     Color shows how feature-space distribution of selected clients evolves.
+     """
+     if not self.proto_rows:
         print("[ProtoHeatmap] No prototype logs, skipping.")
         return
 
-    df = pd.DataFrame(self.proto_rows)
+     df = pd.DataFrame(self.proto_rows)
 
-    # Pivot: rows = rounds, columns = client_id, values = proto_score
-    table = df.pivot_table(
+     # Pivot: rows = rounds, columns = client_id, values = proto_score
+     table = df.pivot_table(
         index="round",
         columns="client_id",
         values="proto_score",
         aggfunc="mean",
-    ).sort_index(axis=0).sort_index(axis=1)
+     ).sort_index(axis=0).sort_index(axis=1)
 
-    tag = getattr(self, "method_name", "Ours-EM").replace(" ", "_")
-    csv_path = self.results_dir / f"proto_heatmap_{tag}.csv"
-    table.to_csv(csv_path)
-    print(f"[ProtoHeatmap] Saved matrix CSV -> {csv_path}")
+     tag = getattr(self, "method_name", "Ours-EM").replace(" ", "_")
+     csv_path = self.results_dir / f"proto_heatmap_{tag}.csv"
+     table.to_csv(csv_path)
+     print(f"[ProtoHeatmap] Saved matrix CSV -> {csv_path}")
 
-    # domain per client (majority over logged rounds) – optional
-    dom_agg = (df.groupby("client_id")["domain_id"]
+     # domain per client (majority over logged rounds) – optional
+     dom_agg = (df.groupby("client_id")["domain_id"]
                  .agg(lambda x: np.bincount([d for d in x if d >= 0]).argmax()
                       if any(np.array(x) >= 0) else -1))
-    dom_path = self.results_dir / f"proto_client_domains_{tag}.csv"
-    dom_agg.to_csv(dom_path, header=["domain_id"])
-    print(f"[ProtoHeatmap] Saved client->domain map -> {dom_path}")
+     dom_path = self.results_dir / f"proto_client_domains_{tag}.csv"
+     dom_agg.to_csv(dom_path, header=["domain_id"])
+     print(f"[ProtoHeatmap] Saved client->domain map -> {dom_path}")
 
-    # --- Heatmap ---
-    plt.figure(figsize=(10, 6))
-    im = plt.imshow(
+     # --- Heatmap ---
+     plt.figure(figsize=(10, 6))
+     im = plt.imshow(
         table.values.T,          # shape: (num_clients, num_rounds)
         aspect="auto",
         origin="lower",
         cmap="viridis",          # continuous colormap for proto_score
     )
-    plt.colorbar(im, label="Prototype score")
+     plt.colorbar(im, label="Prototype score")
 
-    rounds = table.index.to_list()
-    clients = table.columns.to_list()
+     rounds = table.index.to_list()
+     clients = table.columns.to_list()
 
-    plt.xticks(
+     plt.xticks(
         ticks=np.arange(len(rounds)),
         labels=rounds,
         rotation=45,
         ha="right",
     )
-    plt.yticks(
+     plt.yticks(
         ticks=np.arange(len(clients)),
         labels=[f"Client {c}" for c in clients],
     )
 
-    plt.xlabel("Rounds")
-    plt.ylabel("Clients")
-    plt.title(f"Prototype-based client selection pattern — {getattr(self, 'method_name', 'Method')}")
-    plt.tight_layout()
+     plt.xlabel("Rounds")
+     plt.ylabel("Clients")
+     plt.title(f"Prototype-based client selection pattern — {getattr(self, 'method_name', 'Method')}")
+     plt.tight_layout()
 
-    png_path = self.results_dir / f"proto_heatmap_{tag}.png"
-    plt.savefig(png_path, dpi=200)
-    plt.close()
-    print(f"[ProtoHeatmap] Saved heatmap PNG -> {png_path}")
+     png_path = self.results_dir / f"proto_heatmap_{tag}.png"
+     plt.savefig(png_path, dpi=200)
+     plt.close()
+     print(f"[ProtoHeatmap] Saved heatmap PNG -> {png_path}")
 
     def save_participation_stats(self, filename="client_participation.csv"):
         """Save participation statistics at the end of training"""
