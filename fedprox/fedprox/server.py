@@ -1530,7 +1530,7 @@ class GPAFStrategy(FedAvg):
      plt.title(f"Prototype-based selection pattern — {self.method_name}")
      plt.tight_layout()
 
-     png_path = self.results_dir / f"proto_heatmap_.png"
+     png_path = self.results_dir / f"proto_heatmap_CDCSF.png"
      plt.savefig(png_path, dpi=200)
      plt.close()
      print(f"[ProtoHeatmap] Saved heatmap PNG -> {png_path}")
