@@ -348,11 +348,11 @@ def get_server_fn(mlflow=None):
         min_evaluate_clients=4,
         min_available_clients=4,
          ground_truth_stragglers=ground_truth_stragglers,
- total_rounds =300,     
+ total_rounds =200,     
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=300)
+    config = ServerConfig(num_rounds=200)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
