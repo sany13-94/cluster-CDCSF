@@ -828,7 +828,7 @@ class GPAFStrategy(FedAvg):
         
         if progress < 0.4 :
           # Early phase (0-20%): Prioritize reliability for stable initial model
-          alpha_1, alpha_2 = 0.7, 0.3
+          alpha_1, alpha_2 = 0.8, 0.2
 
         elif progress < 0.8:
             # Middle phase (20-80%): Balanced approach
