@@ -353,9 +353,13 @@ def get_server_fn(mlflow=None):
     initial_parameters = None
     base_round = 0
 
+    ckpt = load_latest_checkpoint(prev_ckpt_dir)
+    initial_parameters = None
+    base_round = 0
+
     if ckpt is not None:
       initial_parameters = ckpt["parameters"]
-      base_round = ckpt["server_round"]   # e.g., 6
+      base_round = ckpt["server_round"]   # e.g., 4
       print(f"[Resume] Resuming from global round {base_round}")
 
     if strategy=="fedavg":
@@ -387,6 +391,8 @@ def get_server_fn(mlflow=None):
   initial_parameters=initial_parameters,  # <-- use checkpoint
   save_dir=curr_ckpt_dir,   
     save_every=2,
+    base_round=base_round,                       # <--- NEW
+    meta_state=ckpt.get("meta_state") if ckpt else None,  # <--- NEW
    
       )
 

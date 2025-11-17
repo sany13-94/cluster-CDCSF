@@ -81,7 +81,8 @@ class GPAFStrategy(FedAvg):
 
          total_rounds: int = 15,
          save_dir: str = "checkpoints", save_every: int = 10,
-         
+         base_round: int = 0,             # <--- NEW
+        meta_state: Optional[dict] = None,  # <--- NEW
    evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
   
     ) -> None:
@@ -108,8 +109,8 @@ class GPAFStrategy(FedAvg):
         map_path="client_id_mapping1.csv"
         self.proto_rows = []   # list of dicts: {"round", "client_id", "proto_score", "domain_id"}
 
-        
-        self.base_round = 0
+        self.base_round = base_round     # <--- replace old self.base_round = 0
+
         self.theta =0.13         # optional threshold for s_c
         self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
 
@@ -252,24 +253,52 @@ class GPAFStrategy(FedAvg):
         self.map_path = Path(map_path)
         expected_unique=self.min_fit_clients
         self.expected_unique = expected_unique
-        # Track what we've already recorded: (client_cid, flower_node_id)
+
+        # Track what we've already recorded: logical_id values
         self._seen = set()
         if self.map_path.exists():
-          try:
-            df = pd.read_csv(self.map_path, dtype=str)
-            for _, r in df.iterrows():
-              self._seen.add(r["logical_id"])
-          except Exception:
-            pass
+            try:
+                df = pd.read_csv(self.map_path, dtype=str)
+                for _, r in df.iterrows():
+                    # file has "logical_id" column
+                    self._seen.add(str(r["logical_id"]))
+            except Exception:
+                pass
 
+        # --- Restore persisted meta-state on resume, if available ---
+        if meta_state is not None:
+            print("[Resume] Restoring meta-state from checkpoint")
+
+            # All keys here are logical ids (lid) as strings
+            self.training_times = meta_state.get("training_times", {})
+            self.selection_counts = meta_state.get("selection_counts", {})
+            self.client_participation_count = meta_state.get("client_participation_count", {})
+            self.participated_clients = set(meta_state.get("participated_clients", []))
+            self.total_rounds_completed = meta_state.get("total_rounds_completed", 0)
+
+            self.client_assignments = meta_state.get("client_assignments", {})
+            self.cluster_prototypes = meta_state.get("cluster_prototypes", {})
+
+            self.fig3_rows = meta_state.get("fig3_rows", [])
+            self.cum_time_sec = meta_state.get("cum_time_sec", 0.0)
+
+            self.proto_rows = meta_state.get("proto_rows", [])
+            self.validation_history = meta_state.get("validation_history", [])
+
+            # Override base_round if stored
+            self.base_round = meta_state.get("base_round", self.base_round)
+
+            print(f"[Resume] Restored {len(self.training_times)} training_times entries")
+            print(f"[Resume] Restored {len(self.selection_counts)} selection_counts entries")
+            print(f"[Resume] Restored {len(self.participated_clients)} participated clients")
+            print(f"[Resume] base_round = {self.base_round}, total_rounds_completed = {self.total_rounds_completed}")
+    
     def initialize_parameters(self, client_manager):
         # Called once at "round 0"
         if self.initial_parameters is not None:
             print("[Resume] Using checkpointed parameters as initial parameters")
             return self.initial_parameters
         return super().initialize_parameters(client_manager)
-
-
     
     def _save_checkpoint(
         self,
@@ -280,17 +309,45 @@ class GPAFStrategy(FedAvg):
         if parameters_aggregated is None:
             return  # nothing to save
 
-        # Save Flower Parameters + round + metrics with pickle
         ckpt_path = os.path.join(self.save_dir_path, f"round_{server_round:04d}.pkl")
+
         data = {
             "server_round": server_round,
             "parameters": parameters_aggregated,
             "metrics": metrics_aggregated,
+            "meta_state": self._get_meta_state(),   # <--- important
         }
+
         with open(ckpt_path, "wb") as f:
             pickle.dump(data, f)
+
         print(f"[CheckpointFedProx] Saved checkpoint: {ckpt_path}")
 
+    def _get_meta_state(self) -> dict:
+        """Collect server-side meta information to persist between runs."""
+        return {
+            # fairness / reliability (all keyed by logical id)
+            "training_times": self.training_times,
+            "selection_counts": self.selection_counts,
+            "client_participation_count": self.client_participation_count,
+            "participated_clients": list(self.participated_clients),
+            "total_rounds_completed": self.total_rounds_completed,
+
+            # clustering state (keys can be logical or uuid, but they persist)
+            "client_assignments": self.client_assignments,
+            "cluster_prototypes": self.cluster_prototypes,
+
+            # time/accuracy curve
+            "fig3_rows": self.fig3_rows,
+            "cum_time_sec": self.cum_time_sec,
+
+            # optional diagnostics
+            "proto_rows": self.proto_rows,
+            "validation_history": self.validation_history,
+
+            # where we stopped globally
+            "base_round": getattr(self, "base_round", 0),
+        }
     
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
       """Return the sample size and required number of clients for evaluation."""
@@ -301,7 +358,7 @@ class GPAFStrategy(FedAvg):
     def _append_rows(self, rows: List[dict]) -> None:
         if not rows:
             return
-        header = ["server_cid", "client_cid", "flower_node_id"]
+        header = ["logical_id", "server_uuid"]
         write_header = not self.map_path.exists()
         with self.map_path.open("a", newline="") as f:
             w = csv.DictWriter(f, fieldnames=header)
@@ -315,125 +372,121 @@ class GPAFStrategy(FedAvg):
         results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-      """
-      Aggregate model updates and updat
-      """
-      if failures:
+        """Aggregate model updates and update meta-state."""
+        if failures:
             print(f"[Round {server_round}] Failures: {len(failures)}")
-        
-      if not results:
+
+        if not results:
             print(f"[Round {server_round}] No clients returned results. Skipping aggregation.")
             return None, {}
-      try:  
-        clients_params_list = []
-        num_samples_list = []
-        current_round_durations = []
-        current_participants = set()
-        new_rows: List[dict] = []
 
+        try:
+            clients_params_list = []
+            num_samples_list = []
+            current_round_durations = []
+            current_participants = set()   # set of logical ids
+            new_rows: List[dict] = []
 
+            # Process results and update tracking
+            for client_proxy, fit_res in results:
+                uuid = client_proxy.cid          # Flower internal UUID
+                metrics = fit_res.metrics or {}
 
-        # Process results and update tracking
-        for client_proxy, fit_res in results:
-            client_id = client_proxy.cid
-            metrics = fit_res.metrics
-            uuid = client_proxy.cid  # Flower internal UUID 
-            cid = metrics.get("client_cid")
-            lid = str(cid)  # normalize key to string
-           
-            
-            node = metrics.get("flower_node_id")
-            self.uuid_to_cid[uuid] = cid
-            self.cid_to_uuid[cid] = uuid
+                # Logical id from client metrics (our stable key)
+                logical_id = metrics.get("client_cid")
+                if logical_id is None:
+                    logical_id = metrics.get("simulation_index")
 
-            print(f'===client id: {cid} and flower id {uuid} and node :{node} ===')
+                if logical_id is None:
+                    print(f"[aggregate_fit] WARNING: no logical_id for uuid={uuid}, skipping meta tracking")
+                    lid = None
+                else:
+                    lid = str(logical_id)
 
-           
-            if lid not in self.client_participation_count:
-              self.client_participation_count[lid] = 0
-            self.client_participation_count[lid] += 1
-            
-            self.participated_clients.add(lid)
-            current_participants.add(lid)
-            
-            # Update EMA training time - Equation (4)
-          
-            metrics = fit_res.metrics or {}
-            if "duration" not in metrics:
-                  continue
-            dur = float(metrics["duration"])
-            prev = self.training_times.get(lid)
-            if prev is None:
-                  ema = dur
-                  print(f"[EMA Init] {lid}: T_c(0) = {dur:.2f}s")
-            else:
-                ema = self.alpha * dur + (1.0 - self.alpha) * prev
-                print(f"[EMA Update] {lid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
-            self.training_times[lid] = ema
+                    # Maintain mapping uuid <-> logical id
+                    self.uuid_to_cid[uuid] = lid
+                    self.cid_to_uuid[lid] = uuid
 
-           
-            current_round_durations.append(dur)
+                node = metrics.get("flower_node_id")
+                print(f"=== logical_id: {logical_id}, lid: {lid}, uuid: {uuid}, node: {node} ===")
 
-            # We store logical ids only (stable across runs)
-            if lid not in self._seen:
-              self._seen.add(lid)
-              new_rows.append({
-        "logical_id": lid,
-        "server_uuid": client_proxy.cid,   # optional: debug only
-    })
+                # Participation counts and sets (by logical id)
+                if lid is not None:
+                    if lid not in self.client_participation_count:
+                        self.client_participation_count[lid] = 0
+                    self.client_participation_count[lid] += 1
 
-            self._append_rows(new_rows)
-            if new_rows:
-                print(f"[Server] Recorded {len(new_rows)} new logical client(s). Total unique: {len(self._seen)}")
-            
-            # Collect parameters for aggregation
-            clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
-            num_samples_list.append(fit_res.num_examples)
-            '''
-            '''
-            # The client should report its logical id once in fit metrics
-            logical = fit_res.metrics.get("logical_id") if fit_res.metrics else None
-            print(f"[Mapping]rtertr ====logical_id={logical} and {self.uuid_to_cid}")
-            print(f"[Mapping]ddd ====: {self.cid_to_uuid}")
+                    self.participated_clients.add(lid)
+                    current_participants.add(lid)
 
-        
-           
-        self.last_round_participants = current_participants
-        self.total_rounds_completed = server_round
+                # EMA training time (also by logical id)
+                if "duration" not in metrics:
+                    continue
 
-        
+                dur = float(metrics["duration"])
+                if lid is not None:
+                    prev = self.training_times.get(lid)
+                    if prev is None:
+                        ema = dur
+                        print(f"[EMA Init] {lid}: T_c(0) = {dur:.2f}s")
+                    else:
+                        ema = self.alpha * dur + (1.0 - self.alpha) * prev
+                        print(f"[EMA Update] {lid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
+                    self.training_times[lid] = ema
 
-        self._validate_straggler_predictions(server_round, results)
-        
-        print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
-        print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
-        
-        # Perform FedAvg aggregation
-        # 2) Convert to Flower Parameters
+                current_round_durations.append(dur)
 
-        aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
-        
-        # After you've iterated over results and updated mappings, durations, etc.
-        self._log_prototypes_after_fit(server_round, results)
-        # Save checkpoint every `save_every` rounds
-        if server_round % self.save_every == 0:
-            metrics_aggregated={}
-            self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
+                # Write mapping CSV (logical_id, server_uuid) once per logical id
+                if lid is not None and lid not in self._seen:
+                    self._seen.add(lid)
+                    new_rows.append({
+                        "logical_id": lid,
+                        "server_uuid": uuid,
+                    })
 
-        if server_round == self.total_rounds :
-            self.save_client_mapping()
-            print("\n" + "="*80)
-            print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
-            print("="*80)
-            self._save_all_results()
-            # NEW: prototype-based heatmap
-            self._save_prototype_heatmap()
-        return ndarrays_to_parameters(aggregated_params), {}
+                self._append_rows(new_rows)
+                if new_rows:
+                    print(f"[Server] Recorded {len(new_rows)} new logical client(s). Total unique: {len(self._seen)}")
 
-      except Exception as e:
-        print(f"[aggregate_fit] Error processing client {getattr(client_proxy,'cid','?')}: {e}")
-        # continue to next client so we still reach the mapping update
-        
+                # Collect parameters for aggregation
+                clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
+                num_samples_list.append(fit_res.num_examples)
+
+            self.last_round_participants = current_participants
+            self.total_rounds_completed = server_round
+
+            # Validate straggler predictions (uses logical ids now)
+            self._validate_straggler_predictions(server_round, results)
+
+            print(f"\n[Round {server_round}] Participants (logical ids): {list(current_participants)}")
+            if current_round_durations:
+                print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
+
+            # FedAvg aggregation
+            aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
+
+            # Prototype logging
+            self._log_prototypes_after_fit(server_round, results)
+
+            # Save checkpoint periodically
+            if server_round % self.save_every == 0:
+                metrics_aggregated = {}
+                self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
+
+            # Finalization at last round
+            if server_round == self.total_rounds:
+                self.save_client_mapping()
+                print("\n" + "=" * 80)
+                print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
+                print("=" * 80)
+                self._save_all_results()
+                self._save_prototype_heatmap()
+
+            return ndarrays_to_parameters(aggregated_params), {}
+
+        except Exception as e:
+            print(f"[aggregate_fit] Error: {e}")
+            return None, {} 
     # ---- in your Strategy class ----
     def _log_prototypes_after_fit(
     self,
@@ -548,66 +601,71 @@ class GPAFStrategy(FedAvg):
       return s.replace("client_", "")   # "client_0" -> "0"
 
     def _validate_straggler_predictions(self, server_round, results):
-      # participants
-      participants, round_dur = [], {}
-      for client_proxy, fit_res in results:
-        uuid = client_proxy.cid
-        metrics = fit_res.metrics or {}
-        logical_id = (
-            metrics.get("logical_id")
-            or metrics.get("client_cid")
-            or client_proxy.cid
-        )
-        lid=str(logical_id)
-        participants.append(lid)
-        if "duration" in fit_res.metrics:
-            round_dur[uuid] = float(fit_res.metrics["duration"])
+        """Validate straggler predictions using logical ids."""
+        participants, round_dur = [], {}
 
-      # compute T_max from EMAs (assume you already updated EMA this round)
-      valid_times = [t for t in self.training_times.values() if t is not None]
-      if not valid_times:
-        return
-      T_max = float(np.mean(valid_times))
+        for client_proxy, fit_res in results:
+            metrics = fit_res.metrics or {}
 
-      # predict (your existing code)
-      predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
+            logical_id = (
+                metrics.get("client_cid")
+                or metrics.get("logical_id")
+                or metrics.get("simulation_index")
+            )
+            if logical_id is None:
+                continue
 
-      # robust ground-truth check: UUID OR logical label
-      gt_uuid_set = self.cid_to_uuid    # UUIDs
-      
-      gt_logical_set = self.ground_truth_cids             # {"client_0","client_1",...}
-      gt_idx_set = {
-    int(cid.split("_", 1)[1])
-    for cid in gt_logical_set
-    if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
-}   
-      for lid in participants:
-        # lid could be "0" or "client_0"
-        try:
-            if lid.startswith("client_"):
-                logical_idx = int(lid.split("_", 1)[1])
-            else:
-                logical_idx = int(lid)
-        except Exception:
-            logical_idx = None
+            lid = str(logical_id)
+            participants.append(lid)
 
-        is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
+            if "duration" in metrics:
+                round_dur[lid] = float(metrics["duration"])
 
-        rec = {
-            "round": server_round,
-            "client_id": lid,  # use logical id here
-            "logical_id": logical_idx,
-            "T_c": self.training_times.get(lid, float("nan")),
-            "T_max": T_max,
-            "s_c": scores.get(lid, float("nan")),
-            "actual_duration": round_dur.get(lid, float("nan")),
-            "predicted_straggler": lid in predicted_set,
-            "ground_truth_straggler": is_gt,
+        # compute T_max from EMAs (assume you already updated EMA this round)
+        valid_times = [t for t in self.training_times.values() if t is not None]
+        if not valid_times:
+            return
+
+        T_max = float(np.mean(valid_times))
+
+        # predict using logical ids
+        predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
+
+        # ground truth stragglers provided as {"client_0", "client_1", ...}
+        gt_logical_set = self.ground_truth_cids
+        gt_idx_set = {
+            int(cid.split("_", 1)[1])
+            for cid in gt_logical_set
+            if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
         }
-        rec["prediction_type"] = self._classify_prediction(
-            rec["predicted_straggler"], rec["ground_truth_straggler"]
-        )
-        self.validation_history.append(rec)
+
+        for lid in participants:
+            try:
+                if lid.startswith("client_"):
+                    logical_idx = int(lid.split("_", 1)[1])
+                else:
+                    logical_idx = int(lid)
+            except Exception:
+                logical_idx = None
+
+            is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
+
+            rec = {
+                "round": server_round,
+                "client_id": lid,  # logical id
+                "logical_id": logical_idx,
+                "T_c": self.training_times.get(lid, float("nan")),
+                "T_max": T_max,
+                "s_c": scores.get(lid, float("nan")),
+                "actual_duration": round_dur.get(lid, float("nan")),
+                "predicted_straggler": lid in predicted_set,
+                "ground_truth_straggler": is_gt,
+            }
+            rec["prediction_type"] = self._classify_prediction(
+                rec["predicted_straggler"], rec["ground_truth_straggler"]
+            )
+            self.validation_history.append(rec)
+
 
             
     #strqgglers 
@@ -934,8 +992,7 @@ class GPAFStrategy(FedAvg):
         
         return selected
     
-      
-  
+   
     def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
     
       # 1. Flatten prototypes: one vector per client
@@ -1168,8 +1225,6 @@ class GPAFStrategy(FedAvg):
       clustering_round = (server_round > self.warmup_rounds and 
                        server_round % self.clustering_interval == 0)
 
-      
-    
       if in_warmup_phase:
         print(f"\n[STAGE 1: WARMUP PHASE] Round {server_round}/{self.warmup_rounds}")
         print(f"  Operating on unified client pool (no clustering)")
