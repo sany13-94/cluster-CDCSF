@@ -383,9 +383,9 @@ def get_server_fn(mlflow=None):
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
         #fraction_evaluate=1.0,
-        min_fit_clients=  4,  # Set minimum number of clients for training
-        min_evaluate_clients=4,
-        min_available_clients=4,
+        min_fit_clients=  10,  # Set minimum number of clients for training
+        min_evaluate_clients=10,
+        min_available_clients=10,
          ground_truth_stragglers=ground_truth_stragglers,
  total_rounds =4,   
   initial_parameters=initial_parameters,  # <-- use checkpoint
