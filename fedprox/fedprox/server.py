@@ -1128,437 +1128,393 @@ class GPAFStrategy(FedAvg):
         except Exception as e:
             print(f"Error computing metrics: {e}")
     
-    def visualize_client_participation(self, participation_dict, save_path="participation_chart.png", 
-                                   method_name="FedProto-Fair"):
+        def visualize_client_participation(self, participation_dict, save_path="participation_chart.png",
+                                       method_name="FedProto-Fair"):
 
-      # ✅ Load UUID → cid mapping
-      mapping_df = pd.read_csv("client_id_mapping1.csv")
-      uuid_to_cid = dict(zip(mapping_df["flower_node_id"].astype(str),
-                           mapping_df["client_cid"].astype(str)))
+        # participation_dict: {lid: count}
+        mapped_dict = {}
+        for lid, count in participation_dict.items():
+            mapped_dict[str(lid)] = count
 
-      # ✅ Convert participation_dict keys using mapping
-      mapped_dict = {}
-      for uuid, count in participation_dict.items():
-        uuid_str = str(uuid)
-        cid = uuid_to_cid.get(uuid_str, f"UNK-{uuid}")  # fallback: unknown
-        print('======{cid}====')
-        mapped_dict[cid] = count
+        sorted_items = sorted(mapped_dict.items(), key=lambda x: int(x[0]))
+        client_ids = [f"Client {item[0]}" for item in sorted_items]
+        counts = [item[1] for item in sorted_items]
 
-      # ✅ Sort clients by numeric cid
-      sorted_items = sorted(mapped_dict.items(), key=lambda x: int(x[0]))
-      client_ids = [f"Client {item[0]}" for item in sorted_items]
-      counts = [item[1] for item in sorted_items]
+        fig, ax = plt.subplots(figsize=(14, 6))
+        bars = ax.bar(range(len(client_ids)), counts)
 
-      # ✅ Plot exactly same as before (using client_ids now)
-      fig, ax = plt.subplots(figsize=(14, 6))
-      bars = ax.bar(range(len(client_ids)), counts)
+        for i, count in enumerate(counts):
+            if count == 0:
+                bars[i].set_color('red')
+                bars[i].set_alpha(0.5)
 
-      for i, count in enumerate(counts):
-        if count == 0:
-            bars[i].set_color('red')
-            bars[i].set_alpha(0.5)
+        ax.set_xlabel('Client ID (logical)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
+        ax.set_title(f'Client Participation Distribution - {method_name}', fontsize=14, fontweight='bold')
+        ax.set_xticks(range(len(client_ids)))
+        ax.set_xticklabels(client_ids, rotation=45, ha='right')
+        ax.grid(axis='y', alpha=0.3, linestyle='--')
 
-      ax.set_xlabel('Client ID', fontsize=12, fontweight='bold')
-      ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
-      ax.set_title(f'Client Participation Distribution - {method_name}', fontsize=14, fontweight='bold')
-      ax.set_xticks(range(len(client_ids)))
-      ax.set_xticklabels(client_ids, rotation=45, ha='right')
-      ax.grid(axis='y', alpha=0.3, linestyle='--')
+        total_clients = len(client_ids)
+        participated = sum(1 for c in counts if c > 0)
+        avg_participation = np.mean(counts) if counts else 0.0
+        std_participation = np.std(counts) if counts else 0.0
 
-      total_clients = len(client_ids)
-      participated = sum(1 for c in counts if c > 0)
-      avg_participation = np.mean(counts)
-      std_participation = np.std(counts)
+        stats_text = (
+            f"Total Clients: {total_clients}\n"
+            f"Participated: {participated} ({(participated/total_clients*100 if total_clients else 0):.1f}%)\n"
+            f"Avg Participation: {avg_participation:.2f} ± {std_participation:.2f}"
+        )
+        ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+                verticalalignment='top', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+                fontsize=10)
 
-      stats_text = f"Total Clients: {total_clients}\nParticipated: {participated} ({participated/total_clients*100:.1f}%)\nAvg Participation: {avg_participation:.2f} ± {std_participation:.2f}"
-      ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-            verticalalignment='top', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-            fontsize=10)
-
-      plt.tight_layout()
-      plt.savefig(save_path, dpi=300, bbox_inches='tight')
-      print(f"Visualization saved to {save_path}")
-      plt.show()
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Visualization saved to {save_path}")
+        plt.close()
 
 
     def configure_fit(
-    self, 
-    server_round: int, 
-    parameters: Parameters, 
-    client_manager: ClientManager
-) -> List[Tuple[ClientProxy, FitIns]]:
-      effective_round = self.base_round + server_round
-     
-      
-      print(f"\n{'='*80}")
-      print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION")
-      print(f"{'='*80}")
-    
-      # Get all available clients
-      all_clients = client_manager.all()
-      available_client_cids = list(all_clients.keys())
-      # ---- start-of-round timer ----
-      
-      self._round_t0[server_round] = time.time()
-      if not available_client_cids:
-        print(f"[Round {server_round}] No clients available.")
-        return []
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: ClientManager
+    ) -> List[Tuple[ClientProxy, FitIns]]:
+        effective_round = self.base_round + server_round
 
-      print(f"\n[Client Status]")
-      print(f"  Total available clients: {len(available_client_cids)}")
-      print(f"  Previously participated: {len(self.participated_clients)}")
-    
-      # Categorize clients
-      participated_available = [cid for cid in available_client_cids 
-                             if cid in self.participated_clients]
-      never_participated = [cid for cid in available_client_cids 
-                         if cid not in self.participated_clients]
-    
-      print(f"  Available participated clients: {len(participated_available)}")
-      print(f"  Available never-participated clients: {len(never_participated)}")
+        print(f"\n{'='*80}")
+        print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION")
+        print(f"{'='*80}")
 
-      # =================================================================
-      # DETERMINE STAGE: WARMUP vs DOMAIN-AWARE
-      # =================================================================
-      in_warmup_phase = server_round <= self.warmup_rounds
-      clustering_round = (server_round > self.warmup_rounds and 
-                       server_round % self.clustering_interval == 0)
+        # Get all available clients (UUIDs)
+        all_clients = client_manager.all()
+        available_uuids = list(all_clients.keys())
 
-      if in_warmup_phase:
-        print(f"\n[STAGE 1: WARMUP PHASE] Round {server_round}/{self.warmup_rounds}")
-        print(f"  Operating on unified client pool (no clustering)")
-        print(f"  Establishing baseline participation patterns")
-      else:
-        print(f"\n[STAGE 2: DOMAIN-AWARE PHASE] Post-warmup clustering enabled")
+        # ---- start-of-round timer ----
+        self._round_t0[server_round] = time.time()
+        if not available_uuids:
+            print(f"[Round {server_round}] No clients available.")
+            return []
 
-      # =================================================================
-      # PHASE 1: CLUSTERING (Only in Stage 2, periodically)
-      # =================================================================
-      clusters = defaultdict(list)
-    
-      if server_round% 2!=0 and participated_available and in_warmup_phase==False:
-        print(f"\n{'─'*80}")
-        print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
-       
-        
-        all_prototypes_list = []
-        all_client_ids = []
-        class_counts_list = []
-        clients_with_prototypes = []
-        domains_ids=[]
-        # Collect prototypes from ALL participated clients
-        for cid in participated_available:
-            client_proxy = all_clients[cid]
-            client_id=int(cid)
-            
-            try:
-                get_protos_res = client_proxy.get_properties(
-                    ins=GetPropertiesIns(config={"request": "prototypes"}), 
-                    timeout=15.0,
-                    group_id=None
-                )
-                
-                prototypes_encoded = get_protos_res.properties.get("prototypes")
-                class_counts_encoded = get_protos_res.properties.get("class_counts")
-                domain_id =int(get_protos_res.properties.get("domain_id", None))
-                
-                print(f'==== clients domains {domains_ids}=====')
-                if prototypes_encoded and class_counts_encoded:
-                    try:
-                        prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
-                        class_counts = pickle.loads(base64.b64decode(class_counts_encoded))
-                        
-                        if isinstance(prototypes, dict) and isinstance(class_counts, dict):
-                            all_prototypes_list.append(prototypes)
-                            all_client_ids.append(cid)
-                            domains_ids.append(domain_id)
-                            class_counts_list.append(class_counts)
-                            clients_with_prototypes.append(cid)
-                            print(f"  ✓ Client {cid}: Prototypes collected")
-                            
-                    except Exception as decode_error:
-                        print(f"  ✗ Client {cid}: Decode error - {decode_error}")
-                else:
-                    print(f"  ⚠ Client {cid}: No prototypes available")
-                    
-            except Exception as e:
-                print(f"  ⚠ Client {cid}: Communication failed - {e}")
+        # Build UUID -> logical id mapping for currently known clients
+        uuid_to_lid: Dict[str, Optional[str]] = {}
+        for uuid in available_uuids:
+            lid = self.uuid_to_cid.get(uuid)
+            uuid_to_lid[uuid] = lid
 
-        print(f"\n[Prototype Collection] {len(clients_with_prototypes)}/{len(participated_available)} successful")
-      
-        # Perform EM clustering if enough clients
-        if len(clients_with_prototypes) >= self.num_clusters:
-            print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
-            
-            # Initialize cluster prototypes if first time
-            if not self.cluster_prototypes:
-                print("  Initializing cluster prototypes with k-means++...")
-                self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
-            
-            # E-step: Assign clients to clusters
-            global_assignments = self._e_step(all_prototypes_list, all_client_ids)
-            
-            # M-step: Update cluster prototypes
-            self.cluster_prototypes = self._m_step(
-                all_prototypes_list, 
-                all_client_ids, 
-                global_assignments, 
-                class_counts_list
-            )
-            
-            # Update cluster assignments
-            for client_id, cluster_id in global_assignments.items():
-                self.client_assignments[client_id] = cluster_id
-            
-            print(f"\n[Clustering Results]")
-            for cluster_id in range(self.num_clusters):
-                cluster_clients = [cid for cid, clust in self.client_assignments.items() 
-                                 if clust == cluster_id]
-                if cluster_clients:
-        
-                   print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
+        print(f"\n[Client Status]")
+        print(f"  Total available clients: {len(available_uuids)}")
+        print(f"  Previously participated (logical ids): {len(self.participated_clients)}")
 
-            #visualize 
+        # Categorize clients (by uuid, but using lid membership)
+        participated_available = []   # uuids with known lid that has participated
+        never_participated = []       # uuids whose lid not in participated set (or lid unknown)
 
-            # === ADD VISUALIZATION HERE ===
-
-            # ✅ NEW: Visualize clustering PROTOTYPES figure 5
-            if len(all_prototypes_list) >= self.num_clusters:
-              self._visualize_clusters(
-                prototypes=all_prototypes_list,
-                client_ids=all_client_ids,
-                server_round=server_round,
-                true_domain_map=None  # Pass your domain map
-            )
-
-            true_domains = np.array(domains_ids)
-           
-            
-        else:
-            print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
-            print(f"  Will use unified pool selection")
-            
-      # =================================================================
-      # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS OR UNIFIED POOL
-      # =================================================================
-    
-      if in_warmup_phase or not self.client_assignments:
-        # STAGE 1: Unified pool (all clients in single cluster)
-        print(f"\n[Client Organization] UNIFIED POOL MODE")
-        clusters[0] = participated_available + never_participated
-        print(f"  Single pool: {len(clusters[0])} clients")
-        
-      else:
-        # STAGE 2: Domain-aware clustering
-        print(f"\n[Client Organization] DOMAIN-AWARE MODE")
-        
-        # Add participated clients to their assigned clusters
-        for cid in participated_available:
-            if cid in self.client_assignments:
-                cluster_id = self.client_assignments[cid]
-                clusters[cluster_id].append(cid)
+        for uuid in available_uuids:
+            lid = uuid_to_lid.get(uuid)
+            if lid is not None and lid in self.participated_clients:
+                participated_available.append(uuid)
             else:
-                # Unassigned clients go to cluster 0
-                clusters[0].append(cid)
-        
-        # Add never-participated clients to virtual cluster
-        if never_participated and self.use_virtual_cluster:
-            clusters[self.virtual_cluster_id] = never_participated
-            print(f"  Virtual Cluster {self.virtual_cluster_id}: {len(never_participated)} new clients")
-        
-        # Display cluster distribution
+                never_participated.append(uuid)
+
+        print(f"  Available participated clients: {len(participated_available)}")
+        print(f"  Available never-participated clients: {len(never_participated)}")
+
+        # =================================================================
+        # DETERMINE STAGE: WARMUP vs DOMAIN-AWARE
+        # =================================================================
+        in_warmup_phase = server_round <= self.warmup_rounds
+
+        if in_warmup_phase:
+            print(f"\n[STAGE 1: WARMUP PHASE] Round {server_round}/{self.warmup_rounds}")
+            print(f"  Operating on unified client pool (no clustering)")
+            print(f"  Establishing baseline participation patterns")
+        else:
+            print(f"\n[STAGE 2: DOMAIN-AWARE PHASE] Post-warmup clustering enabled")
+
+        # =================================================================
+        # PHASE 1: CLUSTERING (unchanged logic, still uses UUIDs)
+        # =================================================================
+        clusters = defaultdict(list)
+
+        if server_round % 2 != 0 and participated_available and not in_warmup_phase:
+            print(f"\n{'─'*80}")
+            print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
+
+            all_prototypes_list = []
+            all_client_ids = []
+            class_counts_list = []
+            clients_with_prototypes = []
+            domains_ids = []
+
+            for uuid in participated_available:
+                client_proxy = all_clients[uuid]
+
+                try:
+                    get_protos_res = client_proxy.get_properties(
+                        ins=GetPropertiesIns(config={"request": "prototypes"}),
+                        timeout=15.0,
+                        group_id=None
+                    )
+
+                    props = get_protos_res.properties
+                    prototypes_encoded = props.get("prototypes")
+                    class_counts_encoded = props.get("class_counts")
+                    domain_id = int(props.get("domain_id", -1))
+
+                    if prototypes_encoded and class_counts_encoded:
+                        try:
+                            prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
+                            class_counts = pickle.loads(base64.b64decode(class_counts_encoded))
+
+                            if isinstance(prototypes, dict) and isinstance(class_counts, dict):
+                                all_prototypes_list.append(prototypes)
+                                all_client_ids.append(uuid)
+                                domains_ids.append(domain_id)
+                                class_counts_list.append(class_counts)
+                                clients_with_prototypes.append(uuid)
+                                print(f"  ✓ Client {uuid}: Prototypes collected")
+
+                        except Exception as decode_error:
+                            print(f"  ✗ Client {uuid}: Decode error - {decode_error}")
+                    else:
+                        print(f"  ⚠ Client {uuid}: No prototypes available")
+
+                except Exception as e:
+                    print(f"  ⚠ Client {uuid}: Communication failed - {e}")
+
+            print(f"\n[Prototype Collection] {len(clients_with_prototypes)}/{len(participated_available)} successful")
+
+            if len(clients_with_prototypes) >= self.num_clusters:
+                print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
+
+                if not self.cluster_prototypes:
+                    print("  Initializing cluster prototypes with k-means++...")
+                    self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
+
+                global_assignments = self._e_step(all_prototypes_list, all_client_ids)
+                self.cluster_prototypes = self._m_step(
+                    all_prototypes_list,
+                    all_client_ids,
+                    global_assignments,
+                    class_counts_list
+                )
+
+                for client_id, cluster_id in global_assignments.items():
+                    self.client_assignments[client_id] = cluster_id
+
+                print(f"\n[Clustering Results]")
+                for cluster_id in range(self.num_clusters):
+                    cluster_clients = [cid for cid, clust in self.client_assignments.items()
+                                       if clust == cluster_id]
+                    if cluster_clients:
+                        print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
+
+                if len(all_prototypes_list) >= self.num_clusters:
+                    self._visualize_clusters(
+                        prototypes=all_prototypes_list,
+                        client_ids=all_client_ids,
+                        server_round=server_round,
+                        true_domain_map=None
+                    )
+            else:
+                print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
+                print(f"  Will use unified pool selection")
+
+        # =================================================================
+        # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS OR UNIFIED POOL (UUIDs)
+        # =================================================================
+        if in_warmup_phase or not self.client_assignments:
+            print(f"\n[Client Organization] UNIFIED POOL MODE")
+            clusters[0] = participated_available + never_participated
+            print(f"  Single pool: {len(clusters[0])} clients")
+        else:
+            print(f"\n[Client Organization] DOMAIN-AWARE MODE")
+
+            for uuid in participated_available:
+                if uuid in self.client_assignments:
+                    cluster_id = self.client_assignments[uuid]
+                    clusters[cluster_id].append(uuid)
+                else:
+                    clusters[0].append(uuid)
+
+            if never_participated and self.use_virtual_cluster:
+                clusters[self.virtual_cluster_id] = never_participated
+                print(f"  Virtual Cluster {self.virtual_cluster_id}: {len(never_participated)} new clients")
+
+            for cluster_id in sorted(clusters.keys()):
+                cluster_clients = clusters[cluster_id]
+                cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+                print(f"  Cluster {cluster_id} [{cluster_type}]: {len(cluster_clients)} clients")
+
+        print(f"\n[Active Clusters] {len(clusters)} cluster(s)")
+
+        # =================================================================
+        # PHASE 3: COMPUTE GLOBAL SELECTION SCORES (LIDs -> map back to UUIDs)
+        # =================================================================
+        print(f"\n{'─'*80}")
+        print(f"[Score Computation] Round {server_round}")
+        print(f"{'─'*80}")
+
+        alpha_1, alpha_2 = self._adapt_weights(server_round)
+        print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
+
+        all_scores: Dict[str, float] = {}  # uuid -> score
+
+        # 1) Participated clients: use full method on logical ids
+        if participated_available:
+            print(f"\n[Participated Clients] Computing reliability + fairness scores...")
+            lids = []
+            lid_by_uuid = {}
+            for uuid in participated_available:
+                lid = uuid_to_lid.get(uuid)
+                if lid is not None:
+                    lids.append(lid)
+                    lid_by_uuid[uuid] = lid
+
+            if lids:
+                lid_scores = self.compute_global_selection_scores(lids, server_round)
+                for uuid, lid in lid_by_uuid.items():
+                    all_scores[uuid] = lid_scores.get(lid, 0.0)
+
+        # 2) New / unmapped clients: neutral reliability, max fairness
+        if never_participated:
+            print(f"\n[New Clients] Assigning initial scores...")
+            for uuid in never_participated:
+                reliability = 0.5
+                fairness = 1.0
+                all_scores[uuid] = (alpha_1 * reliability) + (alpha_2 * fairness)
+                print(f"  Client {uuid}: R={reliability:.3f}, F={fairness:.3f}, Score={all_scores[uuid]:.3f}")
+
+        # =================================================================
+        # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS (UUIDs)
+        # =================================================================
+        print(f"\n{'─'*80}")
+        print(f"[Selection Distribution]")
+        print(f"{'─'*80}")
+
+        if not clusters:
+            print("No clusters available")
+            return []
+
+        total_clusters = len(clusters)
+
+        if in_warmup_phase or total_clusters == 1:
+            cluster_allocations = {list(clusters.keys())[0]: self.min_fit_clients}
+            print(f"Unified pool allocation: {self.min_fit_clients} clients")
+        else:
+            base_per_cluster = max(1, self.min_fit_clients // total_clusters)
+            remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
+
+            print(f"Total selection budget: {self.min_fit_clients} clients")
+            print(f"Active clusters: {total_clusters}")
+            print(f"Base per cluster: {base_per_cluster}")
+            print(f"Remaining: {remaining_budget}")
+
+            cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
+
+            if remaining_budget > 0:
+                cluster_sizes = {cluster_id: len(clients) for cluster_id, clients in clusters.items()}
+                total_size = sum(cluster_sizes.values())
+
+                for cluster_id in sorted(clusters.keys(), key=lambda x: cluster_sizes[x], reverse=True):
+                    if remaining_budget <= 0:
+                        break
+                    proportion = cluster_sizes[cluster_id] / total_size if total_size > 0 else 0
+                    extra = min(remaining_budget, max(1, int(remaining_budget * proportion)))
+                    cluster_allocations[cluster_id] += extra
+                    remaining_budget -= extra
+
+            print(f"\nFinal allocations:")
+            for cluster_id, allocation in sorted(cluster_allocations.items()):
+                cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+                print(f"  Cluster {cluster_id} [{cluster_type}]: {allocation} clients")
+
+        # =================================================================
+        # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER (UUIDs, but log with LIDs)
+        # =================================================================
+        print(f"\n{'─'*80}")
+        print(f"[Client Selection]")
+        print(f"{'─'*80}")
+
+        selected_clients_uuids: List[str] = []
+
         for cluster_id in sorted(clusters.keys()):
             cluster_clients = clusters[cluster_id]
-            cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
-            print(f"  Cluster {cluster_id} [{cluster_type}]: {len(cluster_clients)} clients")
+            allocation = cluster_allocations.get(cluster_id, 0)
 
-      print(f"\n[Active Clusters] {len(clusters)} cluster(s)")
+            if allocation == 0:
+                continue
 
-      # =================================================================
-      # PHASE 3: COMPUTE GLOBAL SELECTION SCORES
-      # =================================================================
-      print(f"\n{'─'*80}")
-      print(f"[Score Computation] Round {server_round}")
-      print(f"{'─'*80}")
-    
-      # Get adaptive weights
-      alpha_1, alpha_2 = self._adapt_weights(server_round)
-      print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
-    
-      # Compute scores for ALL available clients
-      all_scores = {}
-    
-      # Process participated clients (use full methodology)
-      if participated_available:
-        print(f"\n[Participated Clients] Computing reliability + fairness scores...")
-        participated_scores = self.compute_global_selection_scores(
-            participated_available, 
-            server_round
-        )
-        all_scores.update(participated_scores)
-    
-      # Process never-participated clients
-      if never_participated:
-        print(f"\n[New Clients] Assigning initial scores...")
-        for cid in never_participated:
-            reliability = 0.5  # Neutral reliability (no history)
-            fairness = 1.0     # Maximum fairness (never selected)
-            all_scores[cid] = (alpha_1 * reliability) + (alpha_2 * fairness)
-            print(f"  Client {cid}: R={reliability:.3f}, F={fairness:.3f}, Score={all_scores[cid]:.3f}")
+            cluster_type = "Unified Pool" if in_warmup_phase else (
+                "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+            )
 
-      # =================================================================
-      # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS
-      # =================================================================
-      print(f"\n{'─'*80}")
-      print(f"[Selection Distribution]")
-      print(f"{'─'*80}")
-    
-      if not clusters:
-        print("No clusters available")
-        return []
-    
-      total_clusters = len(clusters)
-    
-      # Calculate base allocation
-      if in_warmup_phase or total_clusters == 1:
-        # Warmup or single cluster: allocate all budget to the pool
-        cluster_allocations = {list(clusters.keys())[0]: self.min_fit_clients}
-        print(f"Unified pool allocation: {self.min_fit_clients} clients")
-      else:
-        # Domain-aware: distribute across clusters
-        base_per_cluster = max(1, self.min_fit_clients // total_clusters)
-        remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
-       
-        #cc
-        print(f"Total selection budget: {self.min_fit_clients} clients")
-        print(f"Active clusters: {total_clusters}")
-        print(f"Base per cluster: {base_per_cluster}")
-        print(f"Remaining: {remaining_budget}")
-        
-        # Allocate base quota
-        cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
-        
-        # Distribute remaining proportionally by cluster size
-        if remaining_budget > 0:
-            cluster_sizes = {cluster_id: len(clients) for cluster_id, clients in clusters.items()}
-            total_size = sum(cluster_sizes.values())
-            
-            for cluster_id in sorted(clusters.keys(), key=lambda x: cluster_sizes[x], reverse=True):
-                if remaining_budget <= 0:
-                    break
-                proportion = cluster_sizes[cluster_id] / total_size if total_size > 0 else 0
-                extra = min(remaining_budget, max(1, int(remaining_budget * proportion)))
-                cluster_allocations[cluster_id] += extra
-                remaining_budget -= extra
-        
-        print(f"\nFinal allocations:")
-        for cluster_id, allocation in sorted(cluster_allocations.items()):
-            cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
-            print(f"  Cluster {cluster_id} [{cluster_type}]: {allocation} clients")
+            print(f"\n[Cluster {cluster_id} - type: {cluster_type}]")
 
-      # =================================================================
-      # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER
-      # =================================================================
-      print(f"\n{'─'*80}")
-      print(f"[Client Selection]")
-      print(f"{'─'*80}")
-    
-      selected_clients_cids = []
-    
-      for cluster_id in sorted(clusters.keys()):
-        cluster_clients = clusters[cluster_id]
-        print(f'clusters ====== {cluster_clients}====')
-        allocation = cluster_allocations.get(cluster_id, 0)
-        
-        if allocation == 0:
-            continue
-        
-        cluster_type = "Unified Pool" if in_warmup_phase else (
-            "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
-        )
-        
-        print(f"\n[Cluster {cluster_id} - type de cluster : {cluster_type}]")
-        
-        # Sort by global score (descending)
-        cluster_clients_sorted = sorted(
-            cluster_clients,
-            key=lambda cid: all_scores.get(cid, 0.0),
-            reverse=True
-        )
-        
-        # Select top-k clients
-        num_to_select = min(allocation, len(cluster_clients_sorted))
-        cluster_selection = cluster_clients_sorted[:num_to_select]
-        selected_clients_cids.extend(cluster_selection)
-        
-        print(f"Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
-        
-        # Show detailed scores for top selections
-        for i, cid in enumerate(cluster_selection[:5]):
-            score = all_scores.get(cid, 0.0)
-            status = "NEW" if cid not in self.participated_clients else "participated"
-            selections = self.selection_counts.get(cid, 0)
-            print(f"    {i+1}. {cid:20s} [{status:12s}] Score={score:.4f}, Selected={selections}x")
+            cluster_clients_sorted = sorted(
+                cluster_clients,
+                key=lambda uuid: all_scores.get(uuid, 0.0),
+                reverse=True
+            )
 
-      # =================================================================
-      # PHASE 6: PREPARE INSTRUCTIONS
-      # =================================================================
-      selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
-     
-      instructions = []
-     
-    
-      for client_id in selected_clients_cids:
-        if client_id in all_clients:
-            client_proxy = all_clients[client_id]
-            client_config = {
-                "server_round":   effective_round,
-       "simulate_stragglers": "0,1,2",   # or ",".join(str(i) for i in range(2))
-     "delay_base_sec": 20.0,     # << increase base delay
-    "delay_jitter_sec": 3.0,    # small randomness
-    "delay_prob": 1.0,    
+            num_to_select = min(allocation, len(cluster_clients_sorted))
+            cluster_selection = cluster_clients_sorted[:num_to_select]
+            selected_clients_uuids.extend(cluster_selection)
 
-            }
-            
-            instructions.append((client_proxy, FitIns(parameters, client_config)))
-            
-            # Update selection counts
-            self.selection_counts[client_id] = self.selection_counts.get(client_id, 0) + 1
-      
-      # =================================================================
-      # FINAL SUMMARY
-      # =================================================================
-      print(f"\n{'='*80}")
-      print(f"[Round {server_round}] SELECTION SUMMARY")
-      print(f"{'='*80}")
-    
-      stage_name = "WARMUP" if in_warmup_phase else "DOMAIN-AWARE"
-      print(f"Stage: {stage_name}")
-      print(f"Total selected: {len(instructions)} clients")
-    
-      if not in_warmup_phase:
-        regular_selected = sum(1 for cid in selected_clients_cids 
-                              if cid in self.participated_clients)
-        new_selected = sum(1 for cid in selected_clients_cids 
-                          if cid not in self.participated_clients)
-        
-        print(f"  From domain clusters: {regular_selected} clients")
-        print(f"  From virtual cluster: {new_selected} clients")
-    
-      print(f"\nSelection frequency (top 10):")
-      top_selected = sorted(self.selection_counts.items(), 
-                         key=lambda x: x[1], 
-                         reverse=True)[:10]
-      for cid, count in top_selected:
-        print(f"  {cid:20s}: {count}x")
-    
-      print(f"{'='*80}\n")
+            print(f"Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
 
-    
+            for i, uuid in enumerate(cluster_selection[:5]):
+                score = all_scores.get(uuid, 0.0)
+                lid = uuid_to_lid.get(uuid)
+                status = "NEW" if (lid is None or lid not in self.participated_clients) else "participated"
+                lid_str = f"lid={lid}" if lid is not None else "lid=UNK"
+                lid_sel = self.selection_counts.get(lid, 0) if lid is not None else 0
+                print(f"    {i+1}. {uuid:20s} [{status:12s}] {lid_str} Score={score:.4f}, Selected={lid_sel}x")
 
-      return instructions
+        # =================================================================
+        # PHASE 6: PREPARE INSTRUCTIONS (UUIDs) + update selection_counts (LIDs)
+        # =================================================================
+        selected_clients_uuids = selected_clients_uuids[:self.min_fit_clients]
 
+        instructions: List[Tuple[ClientProxy, FitIns]] = []
+
+        for uuid in selected_clients_uuids:
+            if uuid in all_clients:
+                client_proxy = all_clients[uuid]
+                client_config = {
+                    "server_round": effective_round,
+                    "simulate_stragglers": "0,1,2",
+                    "delay_base_sec": 20.0,
+                    "delay_jitter_sec": 3.0,
+                    "delay_prob": 1.0,
+                }
+
+                instructions.append((client_proxy, FitIns(parameters, client_config)))
+
+                # Update selection counts by logical id
+                lid = uuid_to_lid.get(uuid)
+                if lid is not None:
+                    self.selection_counts[lid] = self.selection_counts.get(lid, 0) + 1
+
+        print(f"\n{'='*80}")
+        print(f"[Round {server_round}] SELECTION SUMMARY")
+        print(f"{'='*80}")
+
+        stage_name = "WARMUP" if in_warmup_phase else "DOMAIN-AWARE"
+        print(f"Stage: {stage_name}")
+        print(f"Total selected: {len(instructions)} clients")
+
+        print(f"\nSelection frequency (top 10) [by logical id]:")
+        top_selected = sorted(self.selection_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        for lid, count in top_selected:
+            print(f"  lid {lid:8s}: {count}x")
+
+        print(f"{'='*80}\n")
+
+        return instructions
    
     def _compute_proto_score_from_dict(self, prototypes: dict) -> float:
      """
