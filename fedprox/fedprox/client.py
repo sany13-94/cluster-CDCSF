@@ -389,7 +389,11 @@ class FederatedClient(fl.client.NumPyClient):
         #net.to(self.device)
         net.train()
         scaler = torch.cuda.amp.GradScaler(enabled=True)
-        
+        SAVE_EVERY_STEPS   = 2000   # keep this fairly large
+        PRINT_EVERY_STEPS  = 100
+        KEEP_LAST          = 3      # rotate checkpoints
+        MAX_STEPS          = int(1e9)  # effectively "no cap"; epochs control duration
+        amp_enabled=True
         # Metrics (binary classification)
         accuracy = Accuracy(task="multiclass", num_classes=num_classes).to(self.device)
         precision = Precision(task="multiclass", num_classes=num_classes, average='macro').to(self.device)
