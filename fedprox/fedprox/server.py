@@ -108,7 +108,7 @@ class GPAFStrategy(FedAvg):
         map_path="client_id_mapping1.csv"
         self.proto_rows = []   # list of dicts: {"round", "client_id", "proto_score", "domain_id"}
 
-        self.initial_parameters = None
+        
         self.base_round = 0
         self.theta =0.13         # optional threshold for s_c
         self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
@@ -264,8 +264,6 @@ class GPAFStrategy(FedAvg):
                     self._seen.add((str(r["client_cid"]), str(r["flower_node_id"])))
             except Exception:
                 pass  # if reading fails, start fresh in memory
-
-
 
 
     def initialize_parameters(self, client_manager):
