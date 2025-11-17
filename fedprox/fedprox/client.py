@@ -94,16 +94,12 @@ class FederatedClient(fl.client.NumPyClient):
         
         # Load existing prototypes if available
         self._load_prototypes_from_disk()
-        self.CKPT_DIR = "/kaggle/working/cluster-CDCSF/fedprox/ckpts"
 
         # Optional: if you added your previous run's "Notebook Output" via Add Data,
         # set this path to that dataset so we can resume across versions automatically.
         # Example: "/kaggle/input/your-notebook-name/ckpts"
         self.PERSIST_INPUT = os.environ.get("KAGGLE_PERSIST_INPUT", "").strip()  # or hardcode the path
-        self.SAVE_EVERY_STEPS  = 2000   # checkpoint cadence (increase if IO is heavy)
-        self.KEEP_LAST         = 3      # keep only last N checkpoints
-        self.PRINT_EVERY_STEPS = 100
-        os.makedirs(self.CKPT_DIR, exist_ok=True)
+        
         
     def set_parameters(self, parameters):
         """Set model parameters from a list of NumPy arrays."""
@@ -379,58 +375,10 @@ class FederatedClient(fl.client.NumPyClient):
             self.class_counts_from_last_round = None
 
     
-    # ------------------ Helpers ------------------
-    def latest_ckpt_in(self,path):
-      files = sorted(glob.glob(os.path.join(path, "*.pt")))
-      return files[-1] if files else None
+  
 
-    def latest_ckpt(self):
-      # prefer fresh local ckpt; else fall back to prior version output (if provided)
-      ckpt = self.latest_ckpt_in(self.CKPT_DIR)
-      if ckpt:
-        return ckpt
-      if self.PERSIST_INPUT and os.path.exists(self.PERSIST_INPUT):
-        return self.latest_ckpt_in(self.PERSIST_INPUT)
-      return None
-
-    def save_ckpt(self,epoch, step, model, optimizer, scaler=None, extra=None):
-      state = {
-        "epoch": int(epoch),
-        "step": int(step),
-        "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scaler": scaler.state_dict() if scaler is not None else None,
-        "extra": extra or {},
-    }
-      path = f"{self.CKPT_DIR}/e{epoch:03d}_s{step:08d}.pt"
-      torch.save(state, path)
-
-      # rotate old checkpoints (keep only last N)
-      all_ckpts = sorted(glob.glob(os.path.join(self.CKPT_DIR, "*.pt")))
-      for p in all_ckpts[:-self.KEEP_LAST]:
-        try: os.remove(p)
-        except: pass
-      return path
-
-    def resume_if_any(self,model, optimizer=None, scaler=None, map_location="cpu"):
-      ckpt = self.latest_ckpt()
-      if not ckpt:
-        return 0, 0
-      state = torch.load(ckpt, map_location=map_location)
-      model.load_state_dict(state["model"])
-      if optimizer is not None and "optimizer" in state:
-        optimizer.load_state_dict(state["optimizer"])
-      if scaler is not None and state.get("scaler"):
-        scaler.load_state_dict(state["scaler"])
-      start_epoch = int(state.get("epoch", 0))
-      start_step  = int(state.get("step", 0))
-      print(f"[RESUME] from {ckpt} (epoch={start_epoch}, step={start_step})")
-      return start_epoch, start_step
-
-    def tidy(self):
-      gc.collect()
-      if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    
+  
 
     def train(self, net, trainloader, client_id, epochs,cfg, simulate_delay=False):
         """Train the network on the training set."""
@@ -501,7 +449,7 @@ class FederatedClient(fl.client.NumPyClient):
 
                 total += labels.size(0)
                 correct += (preds == labels).sum().item()
-                
+
             # ---- End of epoch metrics ----
             epoch_loss /= len(trainloader.dataset)
             epoch_acc = accuracy.compute().item()
@@ -530,9 +478,6 @@ class FederatedClient(fl.client.NumPyClient):
           print(f"[client {uuid}] Simulating straggler delay: {delay:.2f}s")
           time.sleep(delay)
         
-
-
-
 
 
 
