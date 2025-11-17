@@ -287,7 +287,7 @@ class GPAFStrategy(FedAvg):
             return  # nothing to save
 
         # Save Flower Parameters + round + metrics with pickle
-        ckpt_path = os.path.join(self.save_dir, f"round_{server_round:04d}.pkl")
+        ckpt_path = os.path.join(self.save_dir_path, f"round_{server_round:04d}.pkl")
         data = {
             "server_round": server_round,
             "parameters": parameters_aggregated,
