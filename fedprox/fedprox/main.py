@@ -319,35 +319,44 @@ def get_on_evaluate_config_fn():
         return config
 
     return evaluate_config
-def load_latest_checkpoint(save_dir: str = "checkpoints"):
-    import glob
-    import os
-    import pickle
 
-    ckpts = sorted(glob.glob(os.path.join(save_dir, "round_*.pkl")))
+import os, glob, pickle
+from flwr.common import Parameters
+
+def load_latest_checkpoint(checkpoint_dir: str) -> dict | None:
+    ckpts = sorted(glob.glob(os.path.join(checkpoint_dir, "round_*.pkl")))
     if not ckpts:
-        print("[Checkpoint] No checkpoints found, starting from scratch.")
+        print(f"[Checkpoint] No checkpoints found in {checkpoint_dir}, starting from scratch.")
         return None
 
     latest = ckpts[-1]
     print(f"[Checkpoint] Loading checkpoint: {latest}")
     with open(latest, "rb") as f:
         data = pickle.load(f)
-
-    return data  # contains server_round, parameters, metrics
+    return data  # {"server_round": int, "parameters": Parameters, "metrics": dict}
 
 def get_server_fn(mlflow=None):
  """Create server function with MLflow tracking."""
  def server_fn(context: Context) -> ServerAppComponents:
     global strategy
-    ckpt = load_latest_checkpoint("checkpoints")
 
     initial_parameters = None
     start_round = 1
 
+    # 1) Directory where previous version outputs are mounted (read-only)
+    prev_ckpt_dir = "/kaggle/input/checkpoints/checkpoints"
+
+    # 2) Directory where this run will write new checkpoints
+    curr_ckpt_dir = "/kaggle/working/cluster-CDCSF/checkpoints"
+
+    ckpt = load_latest_checkpoint(prev_ckpt_dir)
+    initial_parameters = None
+    base_round = 0
+
     if ckpt is not None:
-      start_round = ckpt["server_round"] + 1
       initial_parameters = ckpt["parameters"]
+      base_round = ckpt["server_round"]   # e.g., 6
+      print(f"[Resume] Resuming from global round {base_round}")
 
     if strategy=="fedavg":
       
@@ -376,7 +385,7 @@ def get_server_fn(mlflow=None):
          ground_truth_stragglers=ground_truth_stragglers,
  total_rounds =4,   
   initial_parameters=initial_parameters,  # <-- use checkpoint
-    save_dir="checkpoints",
+  save_dir=curr_ckpt_dir,   
     save_every=2,
    
       )
