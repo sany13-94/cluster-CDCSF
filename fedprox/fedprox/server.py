@@ -89,7 +89,6 @@ class GPAFStrategy(FedAvg):
         self.min_evaluate_clients = min_evaluate_clients
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
-
         #clusters parameters
         self.warmup_rounds = 20 # Stage 1 duration
         self.num_clusters = 4
@@ -104,7 +103,8 @@ class GPAFStrategy(FedAvg):
         map_path="client_id_mapping1.csv"
         self.proto_rows = []   # list of dicts: {"round", "client_id", "proto_score", "domain_id"}
 
-        
+        self.initial_parameters = None
+        self.base_round = 0
         self.theta =0.13         # optional threshold for s_c
         self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
 
@@ -132,7 +132,7 @@ class GPAFStrategy(FedAvg):
 
         # Validation tracking
         self.validation_history = []  # Track predictions vs ground truth per round
-        
+        self.CHECKPOINT_DIR= "checkpoints"
        
         true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
         self.visualizer = ClusterVisualizationForConfigureFit(
@@ -257,7 +257,47 @@ class GPAFStrategy(FedAvg):
                     self._seen.add((str(r["client_cid"]), str(r["flower_node_id"])))
             except Exception:
                 pass  # if reading fails, start fresh in memory
-         
+
+    def initialize_parameters(self, client_manager):
+        # Called once at "round 0"
+        if self.initial_parameters is not None:
+            print("[Resume] Using checkpointed parameters as initial parameters")
+            return self.initial_parameters
+        return super().initialize_parameters(client_manager)
+
+
+    def _save_checkpoint(self, server_round: int, aggregated_params):
+        """Save server state so we can resume later."""
+        state = {
+            "round": server_round,
+            "parameters": aggregated_params,  # already a flwr.Parameters object
+            "training_times": self.training_times,
+            "client_participation_count": self.client_participation_count,
+            "participated_clients": self.participated_clients,
+            "uuid_to_cid": self.uuid_to_cid,
+            "cid_to_uuid": self.cid_to_uuid,
+        }
+        ckpt_path = os.path.join(self.CHECKPOINT_DIR, f"cdcsf_round_{server_round:03d}.pkl")
+        with open(ckpt_path, "wb") as f:
+            pickle.dump(state, f)
+        print(f"[Checkpoint] Saved state to {ckpt_path}")
+
+    def load_from_checkpoint(self, path: str):
+        """Load server state from a checkpoint file."""
+        with open(path, "rb") as f:
+            state = pickle.load(f)
+
+        self.training_times = state.get("training_times", {})
+        self.client_participation_count = state.get("client_participation_count", {})
+        self.participated_clients = state.get("participated_clients", set())
+        self.uuid_to_cid = state.get("uuid_to_cid", {})
+        self.cid_to_uuid = state.get("cid_to_uuid", {})
+
+        last_round = state["round"]
+        params = state["parameters"]  # flwr.common.Parameters
+        print(f"[Checkpoint] Loaded state from {path} at round {last_round}")
+        return last_round, params
+
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
       """Return the sample size and required number of clients for evaluation."""
       num_clients = client_manager.num_available()
@@ -376,7 +416,8 @@ class GPAFStrategy(FedAvg):
         
         # After you've iterated over results and updated mappings, durations, etc.
         self._log_prototypes_after_fit(server_round, results)
-
+        # 3) Save checkpoint for this round
+        self._save_checkpoint(server_round, new_parameters)
         if server_round == self.total_rounds :
             self.save_client_mapping()
             print("\n" + "="*80)
@@ -1079,8 +1120,9 @@ class GPAFStrategy(FedAvg):
     parameters: Parameters, 
     client_manager: ClientManager
 ) -> List[Tuple[ClientProxy, FitIns]]:
+      effective_round = self.base_round + server_round
      
-    
+      
       print(f"\n{'='*80}")
       print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION")
       print(f"{'='*80}")
@@ -1405,7 +1447,7 @@ class GPAFStrategy(FedAvg):
         if client_id in all_clients:
             client_proxy = all_clients[client_id]
             client_config = {
-                "server_round": server_round,
+                "server_round":   effective_round,
        "simulate_stragglers": "0,1,2",   # or ",".join(str(i) for i in range(2))
      "delay_base_sec": 20.0,     # << increase base delay
     "delay_jitter_sec": 3.0,    # small randomness
