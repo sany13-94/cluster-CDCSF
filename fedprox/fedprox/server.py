@@ -253,18 +253,14 @@ class GPAFStrategy(FedAvg):
         expected_unique=self.min_fit_clients
         self.expected_unique = expected_unique
         # Track what we've already recorded: (client_cid, flower_node_id)
-        self._seen= set()
-
-        # If the CSV already exists, preload seen pairs (so we don't duplicate)
+        self._seen = set()
         if self.map_path.exists():
-            try:
-                import pandas as pd
-                df = pd.read_csv(self.map_path, dtype=str)
-                for _, r in df.iterrows():
-                    self._seen.add((str(r["client_cid"]), str(r["flower_node_id"])))
-            except Exception:
-                pass  # if reading fails, start fresh in memory
-
+          try:
+            df = pd.read_csv(self.map_path, dtype=str)
+            for _, r in df.iterrows():
+              self._seen.add(r["logical_id"])
+          except Exception:
+            pass
 
     def initialize_parameters(self, client_manager):
         # Called once at "round 0"
@@ -335,12 +331,17 @@ class GPAFStrategy(FedAvg):
         current_participants = set()
         new_rows: List[dict] = []
 
+
+
         # Process results and update tracking
         for client_proxy, fit_res in results:
             client_id = client_proxy.cid
             metrics = fit_res.metrics
-            uuid = client_proxy.cid  # Flower internal UUID            
+            uuid = client_proxy.cid  # Flower internal UUID 
             cid = metrics.get("client_cid")
+            lid = str(cid)  # normalize key to string
+           
+            
             node = metrics.get("flower_node_id")
             self.uuid_to_cid[uuid] = cid
             self.cid_to_uuid[cid] = uuid
@@ -348,12 +349,12 @@ class GPAFStrategy(FedAvg):
             print(f'===client id: {cid} and flower id {uuid} and node :{node} ===')
 
            
-            if client_id not in self.client_participation_count:
-              self.client_participation_count[client_id] = 0
-            self.client_participation_count[client_id] += 1
+            if lid not in self.client_participation_count:
+              self.client_participation_count[lid] = 0
+            self.client_participation_count[lid] += 1
             
-            self.participated_clients.add(client_id)
-            current_participants.add(client_id)
+            self.participated_clients.add(lid)
+            current_participants.add(lid)
             
             # Update EMA training time - Equation (4)
           
@@ -361,31 +362,29 @@ class GPAFStrategy(FedAvg):
             if "duration" not in metrics:
                   continue
             dur = float(metrics["duration"])
-            prev = self.training_times.get(uuid)
+            prev = self.training_times.get(lid)
             if prev is None:
                   ema = dur
-                  print(f"[EMA Init] {uuid}: T_c(0) = {dur:.2f}s")
+                  print(f"[EMA Init] {lid}: T_c(0) = {dur:.2f}s")
             else:
                 ema = self.alpha * dur + (1.0 - self.alpha) * prev
-                print(f"[EMA Update] {uuid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
-            self.training_times[uuid] = ema
+                print(f"[EMA Update] {lid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
+            self.training_times[lid] = ema
 
            
             current_round_durations.append(dur)
-            if cid is None or node is None:
-                continue
-            key = (str(int(cid)), str(node))
-            if key not in self._seen:
-                self._seen.add(key)
-                new_rows.append({
-                    "server_cid": client_proxy.cid,        # connection id for reference
-                    "client_cid": key[0],
-                    "flower_node_id": key[1],
-                })
+
+            # We store logical ids only (stable across runs)
+            if lid not in self._seen:
+              self._seen.add(lid)
+              new_rows.append({
+        "logical_id": lid,
+        "server_uuid": client_proxy.cid,   # optional: debug only
+    })
+
             self._append_rows(new_rows)
             if new_rows:
-              print(f"[Server] Recorded {len(new_rows)} new client(s). Total unique: {len(self._seen)}")
-            
+                print(f"[Server] Recorded {len(new_rows)} new logical client(s). Total unique: {len(self._seen)}")
             
             # Collect parameters for aggregation
             clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
@@ -542,18 +541,25 @@ class GPAFStrategy(FedAvg):
     def _save_all_results(self):
       
         self.save_participation_stats()
-        self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", 
-                                )
+        #self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", )
         self.save_validation_results()
     def _norm(self,label: str) -> str:
       s = str(label).strip()
       return s.replace("client_", "")   # "client_0" -> "0"
+
     def _validate_straggler_predictions(self, server_round, results):
       # participants
       participants, round_dur = [], {}
       for client_proxy, fit_res in results:
         uuid = client_proxy.cid
-        participants.append(uuid)
+        metrics = fit_res.metrics or {}
+        logical_id = (
+            metrics.get("logical_id")
+            or metrics.get("client_cid")
+            or client_proxy.cid
+        )
+        lid=str(logical_id)
+        participants.append(lid)
         if "duration" in fit_res.metrics:
             round_dur[uuid] = float(fit_res.metrics["duration"])
 
@@ -574,32 +580,34 @@ class GPAFStrategy(FedAvg):
     int(cid.split("_", 1)[1])
     for cid in gt_logical_set
     if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
-}  
-    
-      for uuid in participants:
-          val = self.uuid_to_cid.get(uuid)  # could be "0" or 0 or None
-          try:
-            logical_idx = int(val) if val is not None else None
-          except (TypeError, ValueError):
+}   
+      for lid in participants:
+        # lid could be "0" or "client_0"
+        try:
+            if lid.startswith("client_"):
+                logical_idx = int(lid.split("_", 1)[1])
+            else:
+                logical_idx = int(lid)
+        except Exception:
             logical_idx = None
 
-          is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
-          print(f'===== {is_gt} and {self._norm(logical_idx)} and {gt_logical_set}')
-          print(f'===== {gt_uuid_set} and {uuid} and {gt_idx_set}')
+        is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
 
-          rec = {
+        rec = {
             "round": server_round,
-            "client_id": uuid,
+            "client_id": lid,  # use logical id here
             "logical_id": logical_idx,
-            "T_c": self.training_times.get(uuid, float("nan")),
+            "T_c": self.training_times.get(lid, float("nan")),
             "T_max": T_max,
-            "s_c": scores.get(uuid, float("nan")),
-            "actual_duration": round_dur.get(uuid, float("nan")),
-            "predicted_straggler": uuid in predicted_set,
-            "ground_truth_straggler": is_gt,                         # <-- now correct
+            "s_c": scores.get(lid, float("nan")),
+            "actual_duration": round_dur.get(lid, float("nan")),
+            "predicted_straggler": lid in predicted_set,
+            "ground_truth_straggler": is_gt,
         }
-          rec["prediction_type"] = self._classify_prediction(rec["predicted_straggler"], rec["ground_truth_straggler"])
-          self.validation_history.append(rec)
+        rec["prediction_type"] = self._classify_prediction(
+            rec["predicted_straggler"], rec["ground_truth_straggler"]
+        )
+        self.validation_history.append(rec)
 
             
     #strqgglers 
