@@ -77,13 +77,17 @@ class GPAFStrategy(FedAvg):
         min_available_clients=2,
         batch_size=32,
         ground_truth_stragglers=None,
+        initial_parameters: Optional[Parameters] = None,  # <-- add this
+
          total_rounds: int = 15,
          save_dir: str = "checkpoints", save_every: int = 10,
          
    evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
   
     ) -> None:
-        super().__init__()
+        super().__init__(
+          initial_parameters=initial_parameters,  
+        )
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.min_fit_clients = min_fit_clients
