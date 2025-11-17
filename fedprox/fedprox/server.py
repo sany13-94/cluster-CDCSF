@@ -211,7 +211,7 @@ class GPAFStrategy(FedAvg):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.best_avg_accuracy = 0.0
         self.batch_size = batch_size
-        self.save_dir = "visualizations"
+        
 
         experiment = mlflow.get_experiment_by_name(experiment_name)
         if experiment is None:
@@ -284,17 +284,6 @@ class GPAFStrategy(FedAvg):
     ) -> None:
         if parameters_aggregated is None:
             return  # nothing to save
-
-        # Save Flower Parameters + round + metrics with pickle
-        ckpt_path = os.path.join(self.save_dir, f"round_{server_round:04d}.pkl")
-        data = {
-            "server_round": server_round,
-            "parameters": parameters_aggregated,
-            "metrics": metrics_aggregated,
-        }
-        with open(ckpt_path, "wb") as f:
-            pickle.dump(data, f)
-        print(f"[CheckpointFedProx] Saved checkpoint: {ckpt_path}")
 
     
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
