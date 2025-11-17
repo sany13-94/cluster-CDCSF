@@ -137,14 +137,17 @@ class GPAFStrategy(FedAvg):
 
         # Validation tracking
         self.validation_history = []  # Track predictions vs ground truth per round
-        self.save_dir = save_dir
+        self.save_dir_path = save_dir
         self.save_every = save_every
-        os.makedirs(self.save_dir, exist_ok=True)
+        os.makedirs(self.save_dir_path, exist_ok=True)
        
         true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
       
         self.virtual_cluster_id = 999
-        
+        self.visualizer = ClusterVisualizationForConfigureFit(
+            save_dir="./clustering_visualizations",
+            true_domain_labels=true_domain_labels
+        )
         # Tracking
         self.training_times = {}
         self.selection_counts = {}
