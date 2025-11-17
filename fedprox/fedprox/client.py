@@ -15,7 +15,6 @@ import os, gc, glob
 import csv
 import torch
 from torch.cuda.amp import autocast, GradScaler
-
 import math
 import torch.nn.functional as F
 from flwr.common.typing import NDArrays, Scalar
@@ -502,19 +501,7 @@ class FederatedClient(fl.client.NumPyClient):
 
                 total += labels.size(0)
                 correct += (preds == labels).sum().item()
-
-                # ---- Logs ----
-                if global_step % PRINT_EVERY_STEPS == 0:
-                  print(f"e{epoch} s{global_step} loss={epoch_loss/max(1,(batch_idx+1)*bs):.4f}")
-
-                # ---- Periodic checkpoint ----
-                if global_step > start_step and (global_step % SAVE_EVERY_STEPS == 0):
-                  path = self.save_ckpt(epoch, global_step, net, optimizer, scaler)
-                  print(f"[CKPT] saved {path} (kept last {KEEP_LAST})")
-                  self.tidy()
-
-                global_step += 1
-
+                
             # ---- End of epoch metrics ----
             epoch_loss /= len(trainloader.dataset)
             epoch_acc = accuracy.compute().item()
@@ -529,11 +516,6 @@ class FederatedClient(fl.client.NumPyClient):
             with open(log_filename, 'a', newline='') as csvfile:
               writer = csv.writer(csvfile)
               writer.writerow([epoch+1, epoch_loss, epoch_acc])
-
-            # ---- End-of-epoch checkpoint (safer resume point) ----
-            final_path = self.save_ckpt(epoch+1, global_step, net, optimizer, scaler)
-            print(f"[CKPT] epoch {epoch+1} saved to {final_path}")
-            self.tidy()
 
         # Simulate delay if needed
        
