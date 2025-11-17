@@ -78,6 +78,7 @@ class GPAFStrategy(FedAvg):
         batch_size=32,
         ground_truth_stragglers=None,
          total_rounds: int = 15,
+         save_dir: str = "checkpoints", save_every: int = 10,
          
    evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
   
@@ -132,13 +133,12 @@ class GPAFStrategy(FedAvg):
 
         # Validation tracking
         self.validation_history = []  # Track predictions vs ground truth per round
-        self.CHECKPOINT_DIR= "checkpoints"
+        self.save_dir = save_dir
+        self.save_every = save_every
+        os.makedirs(self.save_dir, exist_ok=True)
        
         true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
-        self.visualizer = ClusterVisualizationForConfigureFit(
-            save_dir="./clustering_visualizations",
-            true_domain_labels=true_domain_labels
-        )
+      
         self.virtual_cluster_id = 999
         
         # Tracking
@@ -258,6 +258,9 @@ class GPAFStrategy(FedAvg):
             except Exception:
                 pass  # if reading fails, start fresh in memory
 
+
+
+
     def initialize_parameters(self, client_manager):
         # Called once at "round 0"
         if self.initial_parameters is not None:
@@ -266,38 +269,27 @@ class GPAFStrategy(FedAvg):
         return super().initialize_parameters(client_manager)
 
 
-    def _save_checkpoint(self, server_round: int, aggregated_params):
-        """Save server state so we can resume later."""
-        state = {
-            "round": server_round,
-            "parameters": aggregated_params,  # already a flwr.Parameters object
-            "training_times": self.training_times,
-            "client_participation_count": self.client_participation_count,
-            "participated_clients": self.participated_clients,
-            "uuid_to_cid": self.uuid_to_cid,
-            "cid_to_uuid": self.cid_to_uuid,
+    def _save_checkpoint(
+        self,
+        server_round: int,
+        parameters_aggregated: Optional[Parameters],
+        metrics_aggregated: Dict[str, Scalar],
+    ) -> None:
+        if parameters_aggregated is None:
+            return  # nothing to save
+
+        # Save Flower Parameters + round + metrics with pickle
+        ckpt_path = os.path.join(self.save_dir, f"round_{server_round:04d}.pkl")
+        data = {
+            "server_round": server_round,
+            "parameters": parameters_aggregated,
+            "metrics": metrics_aggregated,
         }
-        ckpt_path = os.path.join(self.CHECKPOINT_DIR, f"cdcsf_round_{server_round:03d}.pkl")
         with open(ckpt_path, "wb") as f:
-            pickle.dump(state, f)
-        print(f"[Checkpoint] Saved state to {ckpt_path}")
+            pickle.dump(data, f)
+        print(f"[CheckpointFedProx] Saved checkpoint: {ckpt_path}")
 
-    def load_from_checkpoint(self, path: str):
-        """Load server state from a checkpoint file."""
-        with open(path, "rb") as f:
-            state = pickle.load(f)
-
-        self.training_times = state.get("training_times", {})
-        self.client_participation_count = state.get("client_participation_count", {})
-        self.participated_clients = state.get("participated_clients", set())
-        self.uuid_to_cid = state.get("uuid_to_cid", {})
-        self.cid_to_uuid = state.get("cid_to_uuid", {})
-
-        last_round = state["round"]
-        params = state["parameters"]  # flwr.common.Parameters
-        print(f"[Checkpoint] Loaded state from {path} at round {last_round}")
-        return last_round, params
-
+    
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
       """Return the sample size and required number of clients for evaluation."""
       num_clients = client_manager.num_available()
@@ -418,10 +410,11 @@ class GPAFStrategy(FedAvg):
         
         # After you've iterated over results and updated mappings, durations, etc.
         self._log_prototypes_after_fit(server_round, results)
-        # 3) Save checkpoint for this round
-        new_parameters = ndarrays_to_parameters(aggregated_params)
+        # Save checkpoint every `save_every` rounds
+        if server_round % self.save_every == 0:
+            metrics_aggregated={}
+            self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
 
-        self._save_checkpoint(server_round, new_parameters)
         if server_round == self.total_rounds :
             self.save_client_mapping()
             print("\n" + "="*80)

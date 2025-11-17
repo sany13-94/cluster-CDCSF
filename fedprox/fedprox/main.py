@@ -319,71 +319,72 @@ def get_on_evaluate_config_fn():
         return config
 
     return evaluate_config
+def load_latest_checkpoint(save_dir: str = "checkpoints"):
+    import glob
+    import os
+    import pickle
 
-from flwr.common import Parameters  # add this import at the top
+    ckpts = sorted(glob.glob(os.path.join(save_dir, "round_*.pkl")))
+    if not ckpts:
+        print("[Checkpoint] No checkpoints found, starting from scratch.")
+        return None
 
-TOTAL_ROUNDS = 80  # or cfg.num_rounds later
+    latest = ckpts[-1]
+    print(f"[Checkpoint] Loading checkpoint: {latest}")
+    with open(latest, "rb") as f:
+        data = pickle.load(f)
+
+    return data  # contains server_round, parameters, metrics
 
 def get_server_fn(mlflow=None):
-    """Create server function with MLflow tracking."""
-    def server_fn(context: Context) -> ServerAppComponents:
-        global strategy
+ """Create server function with MLflow tracking."""
+ def server_fn(context: Context) -> ServerAppComponents:
+    global strategy
+    ckpt = load_latest_checkpoint("checkpoints")
 
-        if strategy == "fedavg":
-            strategyi = FedAVGWithEval(
-                fraction_fit=1.0,
-                fraction_evaluate=1.0,
-                min_fit_clients=10,
-                min_evaluate_clients=4,
-                min_available_clients=4,
-                evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
-                on_evaluate_config_fn=get_on_evaluate_config_fn(),
-            )
-        else:
-            print(f"Using GPAF strategy: {strategy}")
-            ground_truth_stragglers = {f"client_{i}" for i in range(3)}
-            strategyi = server.GPAFStrategy(
-                experiment_name,
-                fraction_fit=1.0,
-                min_fit_clients=10,
-                min_evaluate_clients=10,
-                min_available_clients=10,
-                ground_truth_stragglers=ground_truth_stragglers,
-                total_rounds=TOTAL_ROUNDS,
-            )
+    initial_parameters = None
+    start_round = 1
 
-            # ---- Resume logic starts here ----
-            resume_ckpt = "checkpoints/cdcsf_round_120.pkl"
-            start_round_offset = 0
-            init_parameters: Parameters | None = None
+    if ckpt is not None:
+      start_round = ckpt["server_round"] + 1
+      initial_parameters = ckpt["parameters"]
 
-            if os.path.exists(resume_ckpt):
-                last_round, ckpt_params = strategyi.load_from_checkpoint(resume_ckpt)
-                init_parameters = ckpt_params
-                start_round_offset = last_round
-                print(f"[Resume] Will start from round {last_round + 1}")
+    if strategy=="fedavg":
+      
+      strategyi = FedAVGWithEval(
+      fraction_fit=1.0,  # Train with 50% of available clients
+      fraction_evaluate=1,  # Evaluate with all available clients
+      min_fit_clients=4,
+      min_evaluate_clients=4,
+      min_available_clients=4,
+      evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,  # Add this
 
-                # Tell the strategy about initial parameters and offset
-                strategyi.initial_parameters = init_parameters
-                strategyi.base_round = start_round_offset
+      on_evaluate_config_fn=get_on_evaluate_config_fn(),
+)
+      print(f'strategy ggg {strategyi}')
+    else: 
+      print(f'strategy of method {strategy}')
+      # Define stragglers
+      ground_truth_stragglers = {f'client_{i}' for i in range(2)}
+      strategyi = server.GPAFStrategy(
+        experiment_name,
+        fraction_fit=1.0,  # Ensure all clients participate in training
+        #fraction_evaluate=1.0,
+        min_fit_clients=  4,  # Set minimum number of clients for training
+        min_evaluate_clients=4,
+        min_available_clients=4,
+         ground_truth_stragglers=ground_truth_stragglers,
+ total_rounds =200,   
+  initial_parameters=initial_parameters,  # <-- use checkpoint
+    save_dir="checkpoints",
+    save_every=2,
+   
+      )
 
-            else:
-                # Fresh run
-                strategyi.initial_parameters = None
-                strategyi.base_round = 0
-
-            # Compute how many rounds to run in THIS process
-            remaining_rounds = TOTAL_ROUNDS - start_round_offset
-            if remaining_rounds <= 0:
-                raise ValueError(
-                    f"No rounds left to run (TOTAL_ROUNDS={TOTAL_ROUNDS}, "
-                    f"checkpoint at round {start_round_offset})."
-                )
-        # ---- Common server config ----
-        config = ServerConfig(num_rounds=remaining_rounds if strategy != "fedavg" else TOTAL_ROUNDS)
-        return ServerAppComponents(strategy=strategyi, config=config)
-
-    return server_fn
+    # Configure the server for 5 rounds of training
+    config = ServerConfig(num_rounds=200)
+    return ServerAppComponents(strategy=strategyi, config=config)
+ return server_fn
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
@@ -392,6 +393,7 @@ def main(cfg: DictConfig) -> None:
     visualizer = StructuredFeatureVisualizer(
     num_clients=3,  # your number of clients
     num_classes=2,  # number of classes in your data
+    
     )
     server_fn = get_server_fn()
     # Create mlruns directory
