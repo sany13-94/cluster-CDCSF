@@ -347,7 +347,7 @@ def get_server_fn(mlflow=None):
     prev_ckpt_dir = "/kaggle/input/checkpoints/checkpoints"
 
     # 2) Directory where this run will write new checkpoints
-    curr_ckpt_dir = "/kaggle/working/cluster-CDCSF/checkpoints"
+    curr_ckpt_dir = "/kaggle/working/cluster-CDCSF/fedprox/checkpoints"
 
     ckpt = load_latest_checkpoint(prev_ckpt_dir)
     initial_parameters = None
