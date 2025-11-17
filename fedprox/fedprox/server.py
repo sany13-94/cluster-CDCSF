@@ -412,11 +412,15 @@ class GPAFStrategy(FedAvg):
         print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
         
         # Perform FedAvg aggregation
+        # 2) Convert to Flower Parameters
+
         aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
         
         # After you've iterated over results and updated mappings, durations, etc.
         self._log_prototypes_after_fit(server_round, results)
         # 3) Save checkpoint for this round
+        new_parameters = ndarrays_to_parameters(aggregated_params)
+
         self._save_checkpoint(server_round, new_parameters)
         if server_round == self.total_rounds :
             self.save_client_mapping()
