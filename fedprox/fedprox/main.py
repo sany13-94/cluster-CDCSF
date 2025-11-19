@@ -340,6 +340,7 @@ def get_server_fn(mlflow=None):
  def server_fn(context: Context) -> ServerAppComponents:
     global strategy
 
+    initial_parameters = None
 
     # 1) Directory where previous version outputs are mounted (read-only)
     prev_ckpt_dir = "/kaggle/input/checkpoints2/checkpoints"
@@ -354,7 +355,7 @@ def get_server_fn(mlflow=None):
     base_round = 0  # default: brand new training
 
     # Total global rounds across ALL runs
-    global_total_rounds = 70  # or cfg.num_rounds
+    global_total_rounds = 8  # or cfg.num_rounds
 
     if ckpt is not None:
             initial_parameters = ckpt["parameters"]
