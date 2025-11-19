@@ -353,9 +353,6 @@ def get_server_fn(mlflow=None):
     initial_parameters = None
     base_round = 0
 
-    ckpt = load_latest_checkpoint(prev_ckpt_dir)
-    initial_parameters = None
-    base_round = 0
 
     if ckpt is not None:
       initial_parameters = ckpt["parameters"]
