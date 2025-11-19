@@ -344,7 +344,7 @@ def get_server_fn(mlflow=None):
     start_round = 1
 
     # 1) Directory where previous version outputs are mounted (read-only)
-    prev_ckpt_dir = "/kaggle/input/checkpoints/checkpoints"
+    prev_ckpt_dir = "/kaggle/input/checkpoints1/checkpoints"
 
     # 2) Directory where this run will write new checkpoints
     curr_ckpt_dir = "/kaggle/working/cluster-CDCSF/fedprox/checkpoints"
