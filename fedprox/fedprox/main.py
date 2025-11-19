@@ -340,28 +340,31 @@ def get_server_fn(mlflow=None):
  def server_fn(context: Context) -> ServerAppComponents:
     global strategy
 
-    initial_parameters = None
-    start_round = 1
 
     # 1) Directory where previous version outputs are mounted (read-only)
     prev_ckpt_dir = "/kaggle/input/checkpoints2/checkpoints"
 
     # 2) Directory where this run will write new checkpoints
     curr_ckpt_dir = "/kaggle/working/cluster-CDCSF/fedprox/checkpoints"
+    os.makedirs(curr_ckpt_dir, exist_ok=True)
 
     ckpt = load_latest_checkpoint(prev_ckpt_dir)
+
     initial_parameters = None
-    base_round = 4
+    base_round = 0  # default: brand new training
 
+    # Total global rounds across ALL runs
     global_total_rounds = 8  # or cfg.num_rounds
-    remaining_rounds = max(1, global_total_rounds - base_round)
-
 
     if ckpt is not None:
-      initial_parameters = ckpt["parameters"]
-      base_round = ckpt["server_round"]   # e.g., 4
-      print(f"[Resume] Resuming from global round {base_round}")
+            initial_parameters = ckpt["parameters"]
+            base_round = ckpt["server_round"]   # e.g., 4
+            print(f"[Resume] Resuming from global round {base_round}")
 
+    # Number of rounds to run in THIS process
+    remaining_rounds = max(1, global_total_rounds - base_round)
+    print(f"[Config] global_total_rounds={global_total_rounds}, "
+              f"base_round={base_round}, remaining_rounds={remaining_rounds}")
     if strategy=="fedavg":
       
       strategyi = FedAVGWithEval(
