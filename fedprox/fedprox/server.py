@@ -306,13 +306,16 @@ class GPAFStrategy(FedAvg):
         parameters_aggregated: Optional[Parameters],
         metrics_aggregated: Dict[str, Scalar],
     ) -> None:
+
+        # global round = previous base_round + this local server_round
+        global_round = self.base_round + server_round
         if parameters_aggregated is None:
             return  # nothing to save
 
         ckpt_path = os.path.join(self.save_dir_path, f"round_{server_round:04d}.pkl")
 
         data = {
-            "server_round": server_round,
+            "server_round": global_round,
             "parameters": parameters_aggregated,
             "metrics": metrics_aggregated,
             "meta_state": self._get_meta_state(),   # <--- important
@@ -474,7 +477,8 @@ class GPAFStrategy(FedAvg):
                 self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
 
             # Finalization at last round
-            if server_round == self.total_rounds:
+            global_round=self.base_round+server_round
+            if global_round == self.total_rounds:
                 self.save_client_mapping()
                 print("\n" + "=" * 80)
                 print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")

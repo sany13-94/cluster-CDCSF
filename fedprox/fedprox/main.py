@@ -351,7 +351,10 @@ def get_server_fn(mlflow=None):
 
     ckpt = load_latest_checkpoint(prev_ckpt_dir)
     initial_parameters = None
-    base_round = 0
+    base_round = 4
+
+    global_total_rounds = 8  # or cfg.num_rounds
+    remaining_rounds = max(1, global_total_rounds - base_round)
 
 
     if ckpt is not None:
@@ -384,7 +387,8 @@ def get_server_fn(mlflow=None):
         min_evaluate_clients=10,
         min_available_clients=10,
          ground_truth_stragglers=ground_truth_stragglers,
- total_rounds =4,   
+     total_rounds=global_total_rounds,
+   
   initial_parameters=initial_parameters,  # <-- use checkpoint
   save_dir=curr_ckpt_dir,   
     save_every=2,
@@ -394,7 +398,7 @@ def get_server_fn(mlflow=None):
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=4)
+    config = ServerConfig(num_rounds=remaining_rounds)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
