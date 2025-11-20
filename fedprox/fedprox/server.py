@@ -294,7 +294,7 @@ class GPAFStrategy(FedAvg):
             print(f"[Resume] base_round = {self.base_round}, total_rounds_completed = {self.total_rounds_completed}")
     
 
-        def _refresh_uuid_mapping(self, client_manager: ClientManager) -> None:
+    def _refresh_uuid_mapping(self, client_manager: ClientManager) -> None:
           """Ask each client for its logical_id (stable across runs) and 
           populate uuid_to_cid / cid_to_uuid mapping.
           Safe to call every round; it will skip already-known UUIDs.
