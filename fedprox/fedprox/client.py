@@ -202,7 +202,7 @@ class FederatedClient(fl.client.NumPyClient):
         req = config.get("request", None)
         if req == "identity":
             # Logical id must be stable across runs
-            lid = str(self.cid)  # or f"client_{self.cid}"
+            lid = str(self.client_id)  # or f"client_{self.cid}"
             return GetPropertiesRes(
                 properties={
                     "logical_id": lid,
@@ -225,7 +225,6 @@ class FederatedClient(fl.client.NumPyClient):
             has_prototypes = hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None
             has_class_counts = hasattr(self, 'class_counts_from_last_round') and self.class_counts_from_last_round is not None
             
-            print(f"Client {self.client_id} - has_prototypes: {has_prototypes}")
             print(f"Client {self.client_id} - prototype file exists: {self.prototype_file.exists()}")
             
             if has_prototypes and has_class_counts:
