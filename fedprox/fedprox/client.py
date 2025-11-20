@@ -199,6 +199,19 @@ class FederatedClient(fl.client.NumPyClient):
         """Send prototypes to server when requested (NumPyClient interface)."""
         
         print(f"Client {self.client_id} - get_properties called")
+        req = config.get("request", None)
+        if req == "identity":
+            # Logical id must be stable across runs
+            lid = str(self.cid)  # or f"client_{self.cid}"
+            return GetPropertiesRes(
+                properties={
+                    "logical_id": lid,
+                    "client_cid": lid,          # optional
+                    "simulation_index": self.cid,  # optional
+                },
+                status=Status(code=Code.OK, message="identity_ok"),
+            )
+
         
         if config and config.get("request") == "prototypes":
             print(f"Client {self.client_id} - Server requesting prototypes")

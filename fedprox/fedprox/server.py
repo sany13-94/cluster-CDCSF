@@ -221,7 +221,7 @@ class GPAFStrategy(FedAvg):
          experiment = mlflow.get_experiment(experiment_id)
         else:
          print(f"Using existing experiment with ID: {experiment.experiment_id}")
-      
+        
         # Store MLflow reference
         self.mlflow = mlflow
         self.client_to_domain={}
@@ -293,6 +293,41 @@ class GPAFStrategy(FedAvg):
             print(f"[Resume] Restored {len(self.participated_clients)} participated clients")
             print(f"[Resume] base_round = {self.base_round}, total_rounds_completed = {self.total_rounds_completed}")
     
+
+        def _refresh_uuid_mapping(self, client_manager: ClientManager) -> None:
+          """Ask each client for its logical_id (stable across runs) and 
+          populate uuid_to_cid / cid_to_uuid mapping.
+          Safe to call every round; it will skip already-known UUIDs.
+          """
+          all_clients = client_manager.all()
+          for uuid, client_proxy in all_clients.items():
+            if uuid in self.uuid_to_cid:
+                continue  # already known in this run
+
+            try:
+                res = client_proxy.get_properties(
+                    ins=GetPropertiesIns(config={"request": "identity"}),
+                    timeout=5.0,
+                    group_id=None,
+                )
+                props = res.properties or {}
+                lid = (
+                    props.get("logical_id")
+                    or props.get("client_cid")
+                    or props.get("simulation_index")
+                )
+                if lid is None:
+                    print(f"[Mapping] Client {uuid}: no logical_id in identity response")
+                    continue
+
+                lid = str(lid)
+                self.uuid_to_cid[uuid] = lid
+                self.cid_to_uuid[lid] = uuid
+
+                print(f"[Mapping] Bound uuid={uuid} ↔ lid={lid}")
+
+            except Exception as e:
+                print(f"[Mapping] Failed to query identity for uuid={uuid}: {e}")
     def initialize_parameters(self, client_manager):
         # Called once at "round 0"
         if self.initial_parameters is not None:
@@ -935,27 +970,19 @@ class GPAFStrategy(FedAvg):
         return final_scores
     
     
-    def _adapt_weights(self, server_round: int) -> Tuple[float, float]:
-        
-        print(f'ss {server_round} and ee {self.total_rounds}')
-        progress = server_round / self.total_rounds
-        
-        if progress < 0.4 :
-          # Early phase (0-20%): Prioritize reliability for stable initial model
-          alpha_1, alpha_2 = 0.8, 0.2
+    def _adapt_weights(self, global_round: int) -> Tuple[float, float]:
+      print(f'ss {global_round} and ee {self.total_rounds}')
+      progress = global_round / self.total_rounds
 
-        elif progress < 0.8:
-            # Middle phase (20-80%): Balanced approach
-            alpha_1, alpha_2 = 0.8, 0.2
-        
-   
-        else:
-            # Late phase (80-100%): Prioritize fairness for comprehensive coverage
-            alpha_1, alpha_2 = 0.3, 0.7
-       
-       
-       
-        return alpha_1, alpha_2
+      if progress < 0.4:
+        alpha_1, alpha_2 = 0.8, 0.2
+      elif progress < 0.8:
+        alpha_1, alpha_2 = 0.8, 0.2
+      else:
+        alpha_1, alpha_2 = 0.3, 0.7
+
+      return alpha_1, alpha_2
+
     
     
     def select_clients_from_cluster(
@@ -1189,8 +1216,11 @@ class GPAFStrategy(FedAvg):
         effective_round = self.base_round + server_round
 
         print(f"\n{'='*80}")
-        print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION")
+        print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION (global={effective_round})")
         print(f"{'='*80}")
+
+        # 1) Refresh mapping: uuid -> logical_id
+        self._refresh_uuid_mapping(client_manager)
 
         # Get all available clients (UUIDs)
         all_clients = client_manager.all()
@@ -1231,13 +1261,15 @@ class GPAFStrategy(FedAvg):
         # =================================================================
         in_warmup_phase = server_round <= self.warmup_rounds
 
-        if in_warmup_phase:
-            print(f"\n[STAGE 1: WARMUP PHASE] Round {server_round}/{self.warmup_rounds}")
-            print(f"  Operating on unified client pool (no clustering)")
-            print(f"  Establishing baseline participation patterns")
-        else:
-            print(f"\n[STAGE 2: DOMAIN-AWARE PHASE] Post-warmup clustering enabled")
+        effective_round = self.base_round + server_round
 
+        in_warmup_phase = effective_round <= self.warmup_rounds
+
+        # For logging:
+        if in_warmup_phase:
+            print(f"\n[STAGE 1: WARMUP PHASE] Global Round {effective_round}/{self.warmup_rounds}")
+        else:
+            print(f"\n[STAGE 2: DOMAIN-AWARE PHASE] Global Round {effective_round}")
         # =================================================================
         # PHASE 1: CLUSTERING (unchanged logic, still uses UUIDs)
         # =================================================================
@@ -1362,7 +1394,7 @@ class GPAFStrategy(FedAvg):
         print(f"[Score Computation] Round {server_round}")
         print(f"{'─'*80}")
 
-        alpha_1, alpha_2 = self._adapt_weights(server_round)
+        alpha_1, alpha_2 = self._adapt_weights(effective_round)
         print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
 
         all_scores: Dict[str, float] = {}  # uuid -> score
