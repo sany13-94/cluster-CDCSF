@@ -207,7 +207,7 @@ class FederatedClient(fl.client.NumPyClient):
                 properties={
                     "logical_id": lid,
                     "client_cid": lid,          # optional
-                    "simulation_index": self.cid,  # optional
+                 
                 },
                 status=Status(code=Code.OK, message="identity_ok"),
             )
