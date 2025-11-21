@@ -338,20 +338,23 @@ class GPAFStrategy(FedAvg):
     def _save_checkpoint(
         self,
         server_round: int,
-        parameters_aggregated: Optional[Parameters],
+        aggregated_params: Optional[Parameters],
         metrics_aggregated: Dict[str, Scalar],
     ) -> None:
 
         # global round = previous base_round + this local server_round
         global_round = self.base_round + server_round
-        if parameters_aggregated is None:
-            return  # nothing to save
+        # Convert Parameters -> list of np arrays
+        if aggregated_params is not None:
+          params_nd = parameters_to_ndarrays(aggregated_params)
+        else:
+          params_nd = None
 
         ckpt_path = os.path.join(self.save_dir_path, f"round_{server_round:04d}.pkl")
 
         data = {
             "server_round": global_round,
-            "parameters": parameters_aggregated,
+            "parameters": aggregated_params,
             "metrics": metrics_aggregated,
             "meta_state": self._get_meta_state(),   # <--- important
         }
@@ -384,7 +387,6 @@ class GPAFStrategy(FedAvg):
             "validation_history": self.validation_history,
 
             # where we stopped globally
-            "base_round": getattr(self, "base_round", 0),
         }
     
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
