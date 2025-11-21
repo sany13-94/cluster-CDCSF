@@ -83,6 +83,16 @@ class FederatedClient(fl.client.NumPyClient):
         self.prototype_file = self.prototype_dir / f"client_{self.client_id}_prototypes.pkl"
         self.counts_file = self.prototype_dir / f"client_{self.client_id}_counts.pkl"
         
+
+
+        BASE_DIR = Path("/kaggle/working/cluster-CDCSF/fedprox")
+        self.prototype_dir = BASE_DIR / "prototype_cache"
+        self.prototype_dir.mkdir(parents=True, exist_ok=True)
+        self.prototype_file = self.prototype_dir / f"client_{self.client_id}_prototypes.pkl"
+        self.counts_file = self.prototype_dir / f"client_{self.client_id}_counts.pkl"
+
+print("Saving prototypes to:", self.prototype_dir.resolve())
+
         # Initialize prototype storage
         self.prototypes_from_last_round = None
         self.class_counts_from_last_round = None
