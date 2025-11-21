@@ -100,7 +100,19 @@ class FederatedClient(fl.client.NumPyClient):
         """Set model parameters from a list of NumPy arrays."""
         params_dict = zip(self.net.state_dict().keys(), parameters)
         state_dict = {k: torch.tensor(v) for k, v in params_dict}
-        self.net.load_state_dict(state_dict, strict=True)
+        
+        try:
+          
+          self.net.load_state_dict(state_dict, strict=True)
+
+        except Exception as e:
+          print("❌ Parameter loading FAILED")
+          print("Model keys:", list(self.net.state_dict().keys()))
+          print("Checkpoint keys:", list(state_dict.keys()))
+          print("Shape mismatch error:", e)
+          raise e
+
+   
 
     def get_parameters(self, config=None):
       return [val.cpu().numpy() for _, val in self.net.state_dict().items()]
