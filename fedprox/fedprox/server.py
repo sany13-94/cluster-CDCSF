@@ -337,10 +337,11 @@ class GPAFStrategy(FedAvg):
         print("No checkpoint - initializing from client")
         return None
 
+
     def _save_checkpoint(
-    self,
+      self,
     server_round: int,
-    aggregated_params: Optional[Parameters],
+    aggregated_params: Optional[Parameters] | Optional[list],
     metrics_aggregated: Dict[str, Scalar],
 ) -> None:
       """Save model and meta-state to disk (one file per *global* round)."""
@@ -352,27 +353,31 @@ class GPAFStrategy(FedAvg):
       ckpt_path = os.path.join(self.save_dir_path, f"round_{global_round:04d}.pkl")
 
       try:
-        # Store params as *ndarrays* for easy reload later
-        if aggregated_params is not None:
-            params_nd = parameters_to_ndarrays(aggregated_params)
-        else:
+        # Normalise to "list of ndarrays"
+        if aggregated_params is None:
             params_nd = None
+        elif isinstance(aggregated_params, list):
+            # Already a list[np.ndarray] from _fedavg_parameters
+            params_nd = aggregated_params
+        else:
+            # It's a Flower Parameters object
+            params_nd = parameters_to_ndarrays(aggregated_params)
 
         data = {
             "server_round": global_round,
             "parameters": params_nd,          # list[np.ndarray] or None
-            "metrics": metrics_aggregated,    # any per-round metrics you like
-            "meta_state": self._get_meta_state(),  # if you want fairness/clustering resume
+            "metrics": metrics_aggregated,
+            "meta_state": self._get_meta_state(),  # if you're using meta-state
         }
 
         with open(ckpt_path, "wb") as f:
             pickle.dump(data, f)
 
-        print(f"💾 Checkpoint saved: {ckpt_path}")
+        print(f"[CheckpointFedProx] ✅ Saved checkpoint: {ckpt_path}")
 
       except Exception as e:
         print(f"[CheckpointFedProx] FAILED to save checkpoint {ckpt_path}: {e}")
-        
+
     def _get_meta_state(self):
       return {
         "training_times": self.training_times,
