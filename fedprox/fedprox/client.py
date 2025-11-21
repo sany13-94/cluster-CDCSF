@@ -197,7 +197,7 @@ class FederatedClient(fl.client.NumPyClient):
             import traceback
             traceback.print_exc()
             raise e
-   
+    '''
     def get_properties(self, config):
         """Send prototypes to server when requested (NumPyClient interface)."""
         
@@ -260,6 +260,59 @@ class FederatedClient(fl.client.NumPyClient):
         return {
           "domain_id": str(self.traindata.dataset.domain_id),
           "simulation_index": str(self.client_id)}
+
+    '''
+    def get_properties(self, config):
+      print(f"[Client {self.client_id}] get_properties called. Config = {config}")
+
+      # --- 1) Identity request -------------------------------------------------
+      if config is not None and config.get("request") == "identity":
+        lid = str(self.client_id)
+        return GetPropertiesRes(
+            properties={
+                "logical_id": lid,
+                "client_cid": lid,
+            },
+            status=Status(code=Code.OK, message="identity_ok"),
+        )
+
+      # --- 2) Prototype request ------------------------------------------------
+      if config is not None and config.get("request") == "prototypes":
+        print(f"Client {self.client_id} - Server requesting prototypes")
+
+        # load from disk if needed
+        if self.prototypes_from_last_round is None:
+            self._load_prototypes_from_disk()
+
+        if self.prototypes_from_last_round is not None and \
+           self.class_counts_from_last_round is not None:
+
+            prototypes_bytes = pickle.dumps(self.prototypes_from_last_round)
+            class_counts_bytes = pickle.dumps(self.class_counts_from_last_round)
+
+            return GetPropertiesRes(
+                properties={
+                    "prototypes": base64.b64encode(prototypes_bytes).decode(),
+                    "class_counts": base64.b64encode(class_counts_bytes).decode(),
+                    "client_cid": str(self.client_id),
+                    "flower_node_id": str(self.context.node_id),
+                },
+                status=Status(code=Code.OK, message="prototypes_ok"),
+            )
+
+        return GetPropertiesRes(
+            properties={"domain_id": str(self.traindata.dataset.domain_id)},
+            status=Status(code=Code.OK, message="no_prototypes"),
+        )
+
+      # --- 3) Default case -----------------------------------------------------
+      return GetPropertiesRes(
+        properties={
+            "domain_id": str(self.traindata.dataset.domain_id),
+            "simulation_index": str(self.client_id),
+        },
+        status=Status(code=Code.OK, message="default_ok"),
+    )
 
     def _extract_and_cache_prototypes(self, round_number):
         """Extract prototypes from trained model and cache them."""
