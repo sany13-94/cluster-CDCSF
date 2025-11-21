@@ -393,7 +393,7 @@ def get_server_fn(mlflow=None):
          ground_truth_stragglers=ground_truth_stragglers,
      total_rounds=global_total_rounds,
    
-  initial_parameters=initial_parameters,  # <-- use checkpoint
+  #initial_parameters=initial_parameters,  # <-- use checkpoint
   #save_dir=curr_ckpt_dir,   
     save_every=2,
     base_round=base_round,                       # <--- NEW
