@@ -91,7 +91,6 @@ class FederatedClient(fl.client.NumPyClient):
         self.prototype_file = self.prototype_dir / f"client_{self.client_id}_prototypes.pkl"
         self.counts_file = self.prototype_dir / f"client_{self.client_id}_counts.pkl"
 
-print("Saving prototypes to:", self.prototype_dir.resolve())
 
         # Initialize prototype storage
         self.prototypes_from_last_round = None
