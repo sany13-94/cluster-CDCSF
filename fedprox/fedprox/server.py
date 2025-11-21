@@ -286,7 +286,7 @@ class GPAFStrategy(FedAvg):
             self.validation_history = meta_state.get("validation_history", [])
 
             # Override base_round if stored
-            self.base_round = meta_state.get("base_round", self.base_round)
+            #self.base_round = meta_state.get("base_round", self.base_round)
 
             print(f"[Resume] Restored {len(self.training_times)} training_times entries")
             print(f"[Resume] Restored {len(self.selection_counts)} selection_counts entries")
@@ -1220,7 +1220,7 @@ class GPAFStrategy(FedAvg):
         print(f"{'='*80}")
 
         # 1) Refresh mapping: uuid -> logical_id
-        self._refresh_uuid_mapping(client_manager)
+        #self._refresh_uuid_mapping(client_manager)
 
         # Get all available clients (UUIDs)
         all_clients = client_manager.all()
