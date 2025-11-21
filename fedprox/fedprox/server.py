@@ -354,9 +354,9 @@ class GPAFStrategy(FedAvg):
 
         data = {
             "server_round": global_round,
-            "parameters": aggregated_params,
-            "metrics": metrics_aggregated,
-            "meta_state": self._get_meta_state(),   # <--- important
+            "parameters": params_nd,
+            #"metrics": metrics_aggregated,
+            #"meta_state": self._get_meta_state(),   # <--- important
         }
 
         with open(ckpt_path, "wb") as f:
