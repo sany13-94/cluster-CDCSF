@@ -526,7 +526,7 @@ class GPAFStrategy(FedAvg):
         except Exception as e:
             print(f"[aggregate_fit] Error: {e}")
             return None, {} 
-    # ---- in your Strategy class ----
+    
     def _log_prototypes_after_fit(
     self,
     server_round: int,
@@ -1220,7 +1220,7 @@ class GPAFStrategy(FedAvg):
         print(f"{'='*80}")
 
         # 1) Refresh mapping: uuid -> logical_id
-        #self._refresh_uuid_mapping(client_manager)
+        self._refresh_uuid_mapping(client_manager)
 
         # Get all available clients (UUIDs)
         all_clients = client_manager.all()
@@ -1823,6 +1823,7 @@ class GPAFStrategy(FedAvg):
      
       # Return client-EvaluateIns pairs
       return [(client, evaluate_ins) for client in clients]   
+    
     def evaluate(
         self, server_round: int, parameters: Parameters
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
