@@ -102,7 +102,7 @@ class FederatedClient(fl.client.NumPyClient):
         state_dict = {k: torch.tensor(v) for k, v in params_dict}
         
         try:
-          
+
           self.net.load_state_dict(state_dict, strict=True)
 
         except Exception as e:
@@ -501,13 +501,7 @@ cfg=None  ,
 
     def client_fn(context: Context) -> Client:
         # Destroy any left-over state records that might have bad TTLs
-        try:
-          context.state.config_records.clear()
-          context.state.metrics_records.clear()
-          context.state.parameters_records.clear()
-          print("[Client bootstrap] Cleared old state records")
-        except Exception as e:
-          print(f"[Client bootstrap] Could not clear state records: {e}")
+       
         # Access the client ID (cid) from the context
         cid = context.node_config["partition-id"]
      
