@@ -262,57 +262,82 @@ class FederatedClient(fl.client.NumPyClient):
           "simulation_index": str(self.client_id)}
 
     '''
-    def get_properties(self, config):
-      print(f"[Client {self.client_id}] get_properties called. Config = {config}")
+    
 
-      # --- 1) Identity request -------------------------------------------------
-      if config is not None and config.get("request") == "identity":
-        lid = str(self.client_id)
-        return GetPropertiesRes(
-            properties={
+    def get_properties(self, config: Dict[str, Scalar]) -> Dict[str, Scalar]:
+        """Return simple dict for NumPyClient; Flower will wrap into GetPropertiesRes.
+
+        Supported requests:
+        - {"request": "identity"}   -> used by _refresh_uuid_mapping
+        - {"request": "prototypes"} -> used by your clustering logic
+        - anything else             -> cheap default
+        """
+        req = (config or {}).get("request", None)
+        print(f"Client {self.client_id} - get_properties called with request={req}")
+
+        # ------------------------------------------------------------------
+        # 1) IDENTITY REQUEST (used by _refresh_uuid_mapping)
+        # ------------------------------------------------------------------
+        if req == "identity":
+            # MUST be super cheap and MUST NOT fail
+            lid = str(self.client_id)
+            return {
                 "logical_id": lid,
                 "client_cid": lid,
-            },
-            status=Status(code=Code.OK, message="identity_ok"),
-        )
+                "simulation_index": lid,
+            }
 
-      # --- 2) Prototype request ------------------------------------------------
-      if config is not None and config.get("request") == "prototypes":
-        print(f"Client {self.client_id} - Server requesting prototypes")
+        # ------------------------------------------------------------------
+        # 2) PROTOTYPES REQUEST (used by your clustering stage)
+        # ------------------------------------------------------------------
+        if req == "prototypes":
+            print(f"Client {self.client_id} - Server requesting prototypes")
 
-        # load from disk if needed
-        if self.prototypes_from_last_round is None:
-            self._load_prototypes_from_disk()
+            # Only touch disk when prototypes are actually requested
+            if self.prototypes_from_last_round is None or self.class_counts_from_last_round is None:
+                # Try loading from disk
+                self._load_prototypes_from_disk()
 
-        if self.prototypes_from_last_round is not None and \
-           self.class_counts_from_last_round is not None:
+            has_protos = self.prototypes_from_last_round is not None
+            has_counts = self.class_counts_from_last_round is not None
 
-            prototypes_bytes = pickle.dumps(self.prototypes_from_last_round)
-            class_counts_bytes = pickle.dumps(self.class_counts_from_last_round)
-
-            return GetPropertiesRes(
-                properties={
-                    "prototypes": base64.b64encode(prototypes_bytes).decode(),
-                    "class_counts": base64.b64encode(class_counts_bytes).decode(),
-                    "client_cid": str(self.client_id),
-                    "flower_node_id": str(self.context.node_id),
-                },
-                status=Status(code=Code.OK, message="prototypes_ok"),
+            print(
+                f"Client {self.client_id} - prototype file exists: "
+                f"{self.prototype_file.exists()}, counts file exists: {self.counts_file.exists()}"
             )
 
-        return GetPropertiesRes(
-            properties={"domain_id": str(self.traindata.dataset.domain_id)},
-            status=Status(code=Code.OK, message="no_prototypes"),
-        )
+            if has_protos and has_counts:
+                try:
+                    prototypes_bytes = pickle.dumps(self.prototypes_from_last_round)
+                    class_counts_bytes = pickle.dumps(self.class_counts_from_last_round)
 
-      # --- 3) Default case -----------------------------------------------------
-      return GetPropertiesRes(
-        properties={
-            "domain_id": str(self.traindata.dataset.domain_id),
+                    prototypes_b64 = base64.b64encode(prototypes_bytes).decode("utf-8")
+                    class_counts_b64 = base64.b64encode(class_counts_bytes).decode("utf-8")
+
+                    return {
+                        "prototypes": prototypes_b64,
+                        "class_counts": class_counts_b64,
+                        "client_cid": str(self.client_id),
+                        "flower_node_id": str(self.context.node_id) if self.context else "",
+                    }
+                except Exception as e:
+                    print(f"ERROR: Client {self.client_id} - Encoding prototypes failed: {e}")
+
+            # No prototypes available: still return something small and safe
+            domain_id = getattr(getattr(self.traindata, "dataset", None), "domain_id", -1)
+            return {
+                "domain_id": str(domain_id),
+                "client_cid": str(self.client_id),
+            }
+
+        # ------------------------------------------------------------------
+        # 3) DEFAULT: return minimal identity
+        # ------------------------------------------------------------------
+        domain_id = getattr(getattr(self.traindata, "dataset", None), "domain_id", -1)
+        return {
+            "domain_id": str(domain_id),
             "simulation_index": str(self.client_id),
-        },
-        status=Status(code=Code.OK, message="default_ok"),
-    )
+        }
 
     def _extract_and_cache_prototypes(self, round_number):
         """Extract prototypes from trained model and cache them."""
