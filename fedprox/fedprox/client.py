@@ -54,10 +54,7 @@ class FederatedClient(fl.client.NumPyClient):
     def __init__(self, net: ModelCDCSF, 
      data,validset,
      local_epochs,
-     client_id,
-      mlflow,
-      run_id,
-      
+     client_id,  
             device,
             context=None):
         self.net = net
@@ -74,10 +71,8 @@ class FederatedClient(fl.client.NumPyClient):
         # Move models to device
         self.net.to(self.device)
         
-        self. mlflow= mlflow
         # Initialize optimizers
         self.optimizer= torch.optim.Adam(self.net.parameters())
-        self.run_id=run_id
         # Initialize dictionaries to store features and labels
         self.client_features = {}  # Add this
         self.client_labels = {}    # Add this
@@ -184,11 +179,7 @@ class FederatedClient(fl.client.NumPyClient):
                 "logical_id": f"client_{self.client_id}",  # ensures "client_0"
 
             })
-           
-          
-            #return self.get_parameters(self.net), len(self.traindata), {}
-
-           
+      
         except Exception as e:
             print(f"ERROR: Client {self.client_id} FAILURE during fit round {round_number}: {e}")
             import traceback
@@ -202,7 +193,7 @@ class FederatedClient(fl.client.NumPyClient):
         """
         req = config.get("request", None)
         if req == "identity":
-            lid = self.client_id
+            lid = str(self.client_id)
             return {
                 "logical_id": lid,
                 "client_cid": lid,
@@ -382,12 +373,6 @@ class FederatedClient(fl.client.NumPyClient):
             self.prototypes_from_last_round = None
             self.class_counts_from_last_round = None
 
-    
-  
-
-    
-  
-
     def train(self, net, trainloader, client_id, epochs,cfg, simulate_delay=False):
         """Train the network on the training set."""
 
@@ -430,7 +415,6 @@ class FederatedClient(fl.client.NumPyClient):
                 labels = labels.to(self.device, non_blocking=True)
 
                 optimizer.zero_grad(set_to_none=True)
-
                 # ---- Mixed-precision forward & loss ----
                 with autocast(enabled=amp_enabled):
                   h, _, outputs = net(images)                 # adapt if your net returns differently
@@ -439,7 +423,6 @@ class FederatedClient(fl.client.NumPyClient):
                 # ---- Scaled backward + optimizer step ----
                 scaler.scale(loss).backward()
                 # (Optional) gradient clipping:
-                # scaler.unscale_(optimizer); torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
                 scaler.step(optimizer)
                 scaler.update()
 
@@ -471,10 +454,6 @@ class FederatedClient(fl.client.NumPyClient):
               writer = csv.writer(csvfile)
               writer.writerow([epoch+1, epoch_loss, epoch_acc])
 
-        # Simulate delay if needed
-       
-
-
         if simulate_delay:
           import random
           base = float(cfg.get("delay_base_sec", 10.0))
@@ -483,11 +462,6 @@ class FederatedClient(fl.client.NumPyClient):
           uuid=client_id
           print(f"[client {uuid}] Simulating straggler delay: {delay:.2f}s")
           time.sleep(delay)
-        
-
-
-
-from hashlib import md5
 
 def get_client_signature(dataset):
     all_labels = [dataset[i][1].item() for i in range(len(dataset))]
@@ -509,31 +483,14 @@ cfg=None  ,
  device= torch.device("cuda")
 
 ) -> Callable[[Context], Client]:  # pylint: disable=too-many-arguments
-    import mlflow
     # be a straggler. This is done so at each round the proportion of straggling
     client = MlflowClient()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def client_fn(context: Context) -> Client:
         # Access the client ID (cid) from the context
-      cid = context.node_config["partition-id"]
-      # Create or get experiment
-      experiment = mlflow.get_experiment_by_name(experiment_name)
-      if "mlflow_id" not in context.state.config_records:
-            context.state.config_records["mlflow_id"] = ConfigRecord()
-      print(f'fffkkfj : {device}')
-
-      #check the client id has a run id in the context.state
-      run_ids = context.state.config_records["mlflow_id"]
-
-      if str(cid) not in run_ids:
-            run = client.create_run(experiment.experiment_id)
-            run_ids[str(cid)] = [run.info.run_id]
-    
-      with mlflow.start_run(experiment_id=experiment.experiment_id, run_id=run_ids[str(cid)][0],nested=True) as run:
-        run_id = run.info.run_id
-        #print(f"Created MLflow run for client {cid}: {run_id}")
-        
+        cid = context.node_config["partition-id"]
+     
         input_dim = 28  # Example: 28x28 images flattened
         hidden_dim = 128
         latent_dim = 64
@@ -555,15 +512,13 @@ cfg=None  ,
             trainloader,
             valloader,
             num_epochs,
-            cid,
-            mlflow
+            cid
             ,
-            run_id,
             device,
             context
 
           )
-      return numpy_client.to_client()
+        return numpy_client.to_client()
 
        
        
