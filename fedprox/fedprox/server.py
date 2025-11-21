@@ -499,9 +499,9 @@ class GPAFStrategy(FedAvg):
             self._log_prototypes_after_fit(server_round, results)
 
             # Save checkpoint periodically
-            if server_round % self.save_every == 0:
-                metrics_aggregated = {}
-                self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
+            #if server_round % self.save_every == 0:
+            metrics_aggregated = {}
+            self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
 
             # Finalization at last round
             global_round=self.base_round+server_round
