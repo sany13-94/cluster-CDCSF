@@ -87,7 +87,6 @@ class GPAFStrategy(FedAvg):
   
     ) -> None:
         super().__init__(
-          initial_parameters=initial_parameters,  
         )
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
@@ -102,7 +101,7 @@ class GPAFStrategy(FedAvg):
         self.clustering_interval = 8
         # Simple participation counter
         self.client_participation_count = {}  # client_id -> number of times selected
-        
+        self.initial_parameters=initial_parameters
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
@@ -327,42 +326,43 @@ class GPAFStrategy(FedAvg):
 
             except Exception as e:
                 print(f"[Mapping] Failed to query identity for uuid={uuid}: {e}")
-    def initialize_parameters(self, client_manager):
-        # Called once at "round 0"
-        if self.initial_parameters is not None:
-            print("[Resume] Using checkpointed parameters as initial parameters")
-            return self.initial_parameters
-        return super().initialize_parameters(client_manager)
     
+    def initialize_parameters(self, client_manager):
+        """Lazy initialization from checkpoint"""
+        if self.initial_parameters is not None:
+            print(f"✅ Loading checkpoint into strategy (round {self.base_round})")
+            # Convert list of ndarrays to Parameters only when needed
+            return ndarrays_to_parameters(self.initial_parameters)
+        
+        print("No checkpoint - initializing from client")
+        return None
+
     def _save_checkpoint(
         self,
         server_round: int,
         aggregated_params: Optional[Parameters],
         metrics_aggregated: Dict[str, Scalar],
     ) -> None:
-
-        # global round = previous base_round + this local server_round
         global_round = self.base_round + server_round
-        # Convert Parameters -> list of np arrays
+        
         if aggregated_params is not None:
-          params_nd = parameters_to_ndarrays(aggregated_params)
+            params_nd = parameters_to_ndarrays(aggregated_params)
         else:
-          params_nd = None
-
-        ckpt_path = os.path.join(self.save_dir_path, f"round_{server_round:04d}.pkl")
-
+            params_nd = None
+        
+        ckpt_path = os.path.join(self.save_dir_path, f"round_{global_round:04d}.pkl")
+        
         data = {
             "server_round": global_round,
             "parameters": params_nd,
-            #"metrics": metrics_aggregated,
-            #"meta_state": self._get_meta_state(),   # <--- important
+            "metrics": metrics_aggregated,
         }
-
-        with open(ckpt_path, "wb") as f:
+        
+        with open(ckpt_path, 'wb') as f:
             pickle.dump(data, f)
-
-        print(f"[CheckpointFedProx] Saved checkpoint: {ckpt_path}")
-
+        
+        print(f"💾 Checkpoint saved: {ckpt_path}")
+        
     def _get_meta_state(self):
       return {
         "training_times": self.training_times,
