@@ -205,7 +205,6 @@ class FederatedClient(fl.client.NumPyClient):
             return {
                 "logical_id": lid,
                 "client_cid": lid,
-                "simulation_index": int(lid) if lid.isdigit() else -1,
             }
 
         
