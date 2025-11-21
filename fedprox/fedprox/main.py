@@ -342,14 +342,14 @@ def get_server_fn(mlflow=None):
     ckpt = load_latest_checkpoint(prev_ckpt_dir)
 
     initial_parameters = None
-    base_round = 0  # default: brand new training
+    base_round = 3  # default: brand new training
 
     # Total global rounds across ALL runs
-    global_total_rounds = 2  #8 or cfg.num_rounds
+    global_total_rounds = 6  #8 or cfg.num_rounds
 
     if ckpt is not None:
             initial_parameters = ckpt["parameters"]
-            base_round = ckpt["server_round"]   # e.g., 4
+            #base_round = ckpt["server_round"]   # e.g., 4
             print(f"[Resume] Resuming from global round {base_round}")
 
     # Number of rounds to run in THIS process
