@@ -314,7 +314,6 @@ class GPAFStrategy(FedAvg):
                 lid = (
                     props.get("logical_id")
                     or props.get("client_cid")
-                    or props.get("simulation_index")
                 )
                 if lid is None:
                     print(f"[Mapping] Client {uuid}: no logical_id in identity response")
@@ -364,30 +363,21 @@ class GPAFStrategy(FedAvg):
 
         print(f"[CheckpointFedProx] Saved checkpoint: {ckpt_path}")
 
-    def _get_meta_state(self) -> dict:
-        """Collect server-side meta information to persist between runs."""
-        return {
-            # fairness / reliability (all keyed by logical id)
-            "training_times": self.training_times,
-            "selection_counts": self.selection_counts,
-            "client_participation_count": self.client_participation_count,
-            "participated_clients": list(self.participated_clients),
-            "total_rounds_completed": self.total_rounds_completed,
-
-            # clustering state (keys can be logical or uuid, but they persist)
-            "client_assignments": self.client_assignments,
-            "cluster_prototypes": self.cluster_prototypes,
-
-            # time/accuracy curve
-            "fig3_rows": self.fig3_rows,
-            "cum_time_sec": self.cum_time_sec,
-
-            # optional diagnostics
-            "proto_rows": self.proto_rows,
-            "validation_history": self.validation_history,
-
-            # where we stopped globally
-        }
+    def _get_meta_state(self):
+      return {
+        "training_times": self.training_times,
+        "selection_counts": self.selection_counts,
+        "client_participation_count": self.client_participation_count,
+        "participated_clients": list(self.participated_clients),
+        "total_rounds_completed": self.total_rounds_completed,
+        "client_assignments": self.client_assignments,    # logical IDs only
+        "cluster_prototypes": self.cluster_prototypes,
+        "fig3_rows": self.fig3_rows,
+        "cum_time_sec": self.cum_time_sec,
+        "proto_rows": self.proto_rows,
+        "validation_history": self.validation_history,
+        # NEVER STORE UUIDS
+    }
     
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
       """Return the sample size and required number of clients for evaluation."""

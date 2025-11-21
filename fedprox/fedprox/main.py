@@ -394,7 +394,7 @@ def get_server_fn(mlflow=None):
      total_rounds=global_total_rounds,
    
   initial_parameters=initial_parameters,  # <-- use checkpoint
-  save_dir=curr_ckpt_dir,   
+  #save_dir=curr_ckpt_dir,   
     save_every=2,
     base_round=base_round,                       # <--- NEW
     #meta_state=ckpt["meta_state"] if ckpt else None,  # <--- NEW
