@@ -476,6 +476,10 @@ def main(cfg: DictConfig) -> None:
             "num_cpus": cfg.client_resources.num_cpus,
             "num_gpus": cfg.client_resources.num_gpus,
             'client_resources': {'num_cpus': 2, 'num_gpus':cfg.client_resources.num_gpus }
+            ,"_system_config": {
+        "object_timeout_milliseconds": 600000,  # 10 minutes
+        "num_heartbeats_timeout": 300,
+    }
             }
        
       
