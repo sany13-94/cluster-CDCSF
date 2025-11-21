@@ -387,7 +387,7 @@ def get_server_fn(mlflow=None):
   save_dir=curr_ckpt_dir,   
     save_every=1,
     base_round=base_round,                       # <--- NEW
-    #meta_state=ckpt["meta_state"] if ckpt else None,  # <--- NEW
+    meta_state=ckpt["meta_state"] if ckpt else None,  # <--- NEW
    
       )
 
