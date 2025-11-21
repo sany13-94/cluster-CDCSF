@@ -201,16 +201,12 @@ class FederatedClient(fl.client.NumPyClient):
         print(f"Client {self.client_id} - get_properties called")
         req = config.get("request", None)
         if req == "identity":
-            # Logical id must be stable across runs
-            lid = str(self.client_id)  # or f"client_{self.cid}"
-            return GetPropertiesRes(
-                properties={
-                    "logical_id": lid,
-                    "client_cid": lid,          # optional
-                 
-                },
-                status=Status(code=Code.OK, message="identity_ok"),
-            )
+            lid = self.client_id
+            return {
+                "logical_id": lid,
+                "client_cid": lid,
+                "simulation_index": int(lid) if lid.isdigit() else -1,
+            }
 
         
         if config and config.get("request") == "prototypes":
