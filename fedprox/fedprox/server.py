@@ -338,30 +338,40 @@ class GPAFStrategy(FedAvg):
         return None
 
     def _save_checkpoint(
-        self,
-        server_round: int,
-        aggregated_params: Optional[Parameters],
-        metrics_aggregated: Dict[str, Scalar],
-    ) -> None:
-        global_round = self.base_round + server_round
-        
+    self,
+    server_round: int,
+    aggregated_params: Optional[Parameters],
+    metrics_aggregated: Dict[str, Scalar],
+) -> None:
+      """Save model and meta-state to disk (one file per *global* round)."""
+
+      # Ensure directory exists
+      os.makedirs(self.save_dir_path, exist_ok=True)
+
+      global_round = self.base_round + server_round
+      ckpt_path = os.path.join(self.save_dir_path, f"round_{global_round:04d}.pkl")
+
+      try:
+        # Store params as *ndarrays* for easy reload later
         if aggregated_params is not None:
             params_nd = parameters_to_ndarrays(aggregated_params)
         else:
             params_nd = None
-        
-        ckpt_path = os.path.join(self.save_dir_path, f"round_{global_round:04d}.pkl")
-        
+
         data = {
             "server_round": global_round,
-            "parameters": params_nd,
-            "metrics": metrics_aggregated,
+            "parameters": params_nd,          # list[np.ndarray] or None
+            "metrics": metrics_aggregated,    # any per-round metrics you like
+            "meta_state": self._get_meta_state(),  # if you want fairness/clustering resume
         }
-        
-        with open(ckpt_path, 'wb') as f:
+
+        with open(ckpt_path, "wb") as f:
             pickle.dump(data, f)
-        
+
         print(f"💾 Checkpoint saved: {ckpt_path}")
+
+      except Exception as e:
+        print(f"[CheckpointFedProx] FAILED to save checkpoint {ckpt_path}: {e}")
         
     def _get_meta_state(self):
       return {
