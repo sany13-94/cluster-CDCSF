@@ -123,17 +123,7 @@ def visualize_client_participation(participation_dict, save_path="participation_
       plt.show()
 
 def visualize_from_train_loaders(train_loaders, k=15, d=3, image_idx=0):
-    """
-    Visualize the SAME batch index from representative clients across all domains.
-    Uses actual preprocessed data from train loaders (with domain shift + augmentation).
-    
-    Args:
-        train_loaders: List of DataLoader objects from make_pathmnist_clients_with_domains
-        k: Total number of clients
-        d: Number of training domains
-        image_idx: Index within the batch to visualize
-    """
-    
+   
     num_train_clients = k - 1
     clients_per_domain = num_train_clients // d
     
@@ -355,7 +345,7 @@ def get_server_fn(mlflow=None):
     base_round = 0  # default: brand new training
 
     # Total global rounds across ALL runs
-    global_total_rounds = 4  #8 or cfg.num_rounds
+    global_total_rounds = 2  #8 or cfg.num_rounds
 
     if ckpt is not None:
             initial_parameters = ckpt["parameters"]
@@ -395,7 +385,7 @@ def get_server_fn(mlflow=None):
    
   initial_parameters=initial_parameters,  # <-- use checkpoint
   save_dir=curr_ckpt_dir,   
-    save_every=2,
+    save_every=1,
     base_round=base_round,                       # <--- NEW
     #meta_state=ckpt["meta_state"] if ckpt else None,  # <--- NEW
    
