@@ -626,7 +626,7 @@ class GPAFStrategy(FedAvg):
     def _save_all_results(self):
       
         self.save_participation_stats()
-        #self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", )
+        self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", )
         self.save_validation_results()
     def _norm(self,label: str) -> str:
       s = str(label).strip()
