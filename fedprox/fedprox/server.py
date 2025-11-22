@@ -886,12 +886,7 @@ class GPAFStrategy(FedAvg):
         
         # T_max = (1/N) * Σ T_c(i) for all clients
         T_max = np.mean(valid_times)
-        
-        print(f"\n[Reliability Scores] Round {self.total_rounds_completed}")
-        print(f"  T_max (system average EMA): {T_max:.2f}s")
-        print(f"  β (penalty strength): {self.beta}")
-        print(f"  β * T_max: {self.beta * T_max:.2f}s")
-        
+
         # Calculate reliability score for each client - Equation (6)
         for client_id in client_ids:
             # Get client's EMA training time
@@ -976,7 +971,7 @@ class GPAFStrategy(FedAvg):
         
         return final_scores
     
-    
+    """
     def _adapt_weights(self, global_round: int) -> Tuple[float, float]:
       print(f'ss {global_round} and ee {self.total_rounds}')
       progress = global_round / self.total_rounds
@@ -988,6 +983,20 @@ class GPAFStrategy(FedAvg):
       else:
         alpha_1, alpha_2 = 0.3, 0.7
 
+      return alpha_1, alpha_2
+    """
+    def _adapt_weights(self, global_round: int) -> Tuple[float, float]:
+      progress = global_round / self.total_rounds
+    
+      if progress < 0.1:        # First 10%: EXPLORATION
+        alpha_1, alpha_2 = 0.3, 0.7  # Prioritize FAIRNESS to discover clients
+      elif progress < 0.4:      # 10-40%: TRANSITION
+        alpha_1, alpha_2 = 0.6, 0.4  # Balanced
+      elif progress < 0.8:      # 40-80%: EXPLOITATION
+        alpha_1, alpha_2 = 0.8, 0.2  # Prioritize RELIABILITY
+      else:                     # Final 20%: FAIRNESS
+        alpha_1, alpha_2 = 0.3, 0.7  # Ensure fair participation
+    
       return alpha_1, alpha_2
 
     
@@ -1212,7 +1221,38 @@ class GPAFStrategy(FedAvg):
           plt.savefig(save_path, dpi=300, bbox_inches='tight')
           print(f"Visualization saved to {save_path}")
           plt.close()
-
+    
+    # In your Strategy class, add this visualization:
+    def _save_selection_heatmap(self):
+      """Visualize client selection pattern over rounds."""
+      rounds = []
+      client_ids = []
+      for round_num, selected_clients in self.round_selections.items():
+        for client_id in selected_clients:
+            rounds.append(round_num)
+            client_ids.append(client_id)
+    
+      df = pd.DataFrame({'round': rounds, 'client_id': client_ids})
+      heatmap_data = df.pivot_table(
+        index='client_id', 
+        columns='round', 
+        aggfunc='size', 
+        fill_value=0
+    )
+    
+      plt.figure(figsize=(12, 8))
+      sns.heatmap(heatmap_data, cmap='YlOrRd', cbar_kws={'label': 'Selected'})
+      plt.xlabel('Training Round')
+      plt.ylabel('Client ID')
+      plt.title('Client Selection Pattern: Exploration → Exploitation → Fairness')
+    
+      # Add phase annotations
+      plt.axvline(x=self.total_rounds * 0.1, color='blue', 
+                linestyle='--', label='Exploration End')
+      plt.axvline(x=self.total_rounds * 0.75, color='green', 
+                linestyle='--', label='Fairness Start')
+      plt.legend()
+      plt.savefig(self.results_dir / 'selection_heatmap.png', dpi=300, bbox_inches='tight')
 
     def configure_fit(
         self,
@@ -1423,6 +1463,7 @@ class GPAFStrategy(FedAvg):
                     all_scores[uuid] = lid_scores.get(lid, 0.0)
 
         # 2) New / unmapped clients: neutral reliability, max fairness
+        """
         if never_participated:
             print(f"\n[New Clients] Assigning initial scores...")
             for uuid in never_participated:
@@ -1430,7 +1471,12 @@ class GPAFStrategy(FedAvg):
                 fairness = 1.0
                 all_scores[uuid] = (alpha_1 * reliability) + (alpha_2 * fairness)
                 print(f"  Client {uuid}: R={reliability:.3f}, F={fairness:.3f}, Score={all_scores[uuid]:.3f}")
-
+        """
+        if never_participated:
+          for uuid in never_participated:
+              reliability = 0.8  # ← Assume fast until proven slow
+              fairness = 1.0
+              all_scores[uuid] = (alpha_1 * reliability) + (alpha_2 * fairness)
         # =================================================================
         # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS (UUIDs)
         # =================================================================

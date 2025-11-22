@@ -143,13 +143,6 @@ class FederatedClient(fl.client.NumPyClient):
         "cid": self.client_id  # ✅ send local client id to server
 
         }
-
-   #viusalize client pixels intensities to visualize the domain shift
-    # =======================================================
-    # NOUVELLES FONCTIONS DE VISUALISATION DE DISTRIBUTION
-    # =======================================================
-
-    
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
         try: 

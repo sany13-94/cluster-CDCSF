@@ -342,10 +342,10 @@ def get_server_fn(mlflow=None):
     ckpt = load_latest_checkpoint(prev_ckpt_dir)
 
     initial_parameters = None
-    base_round = 3  # default: brand new training
+    base_round = 0  # default: brand new training
 
     # Total global rounds across ALL runs
-    global_total_rounds = 6  #8 or cfg.num_rounds
+    global_total_rounds = 4  #8 or cfg.num_rounds
 
     if ckpt is not None:
             initial_parameters = ckpt["parameters"]
@@ -377,9 +377,9 @@ def get_server_fn(mlflow=None):
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
         #fraction_evaluate=1.0,
-        min_fit_clients=  10,  # Set minimum number of clients for training
-        min_evaluate_clients=10,
-        min_available_clients=10,
+        min_fit_clients=  6,  # Set minimum number of clients for training
+        min_evaluate_clients=6,
+        min_available_clients=6,
          ground_truth_stragglers=ground_truth_stragglers,
      total_rounds=global_total_rounds,
    
