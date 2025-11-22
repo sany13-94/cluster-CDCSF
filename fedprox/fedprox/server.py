@@ -598,19 +598,16 @@ class GPAFStrategy(FedAvg):
 
         except Exception as e:
             print(f"  [ProtoLog] client_proxy.cid={client_proxy.cid}: get_properties failed: {e}")
-
-
+            
     def _predict_stragglers_from_score(self, T_max, client_ids):
-      """Return set of predicted stragglers using s_c=1-As."""
-      # compute scores for current participants only
+      """Return set of predicted stragglers using s_c = 1 - As."""
       scores = {}
       for cid in client_ids:
         T_c = self.training_times.get(cid, 0.0)
         As = T_max / (T_c + self.beta * T_max) if (T_c > 0 and T_max > 0) else 0.0
         s_c = 1.0 - As
         scores[cid] = s_c
-     
-      # Thresholded prediction
+
       predicted = {cid for cid, s in scores.items() if s >= self.theta}
       return predicted, scores
 
@@ -636,70 +633,67 @@ class GPAFStrategy(FedAvg):
       return s.replace("client_", "")   # "client_0" -> "0"
 
     def _validate_straggler_predictions(self, server_round, results):
-        """Validate straggler predictions using logical ids."""
-        participants, round_dur = [], {}
+      """Validate straggler predictions using logical ids and per-round ground truth."""
+      participants, round_dur = [], {}
 
-        for client_proxy, fit_res in results:
-            metrics = fit_res.metrics or {}
+      for client_proxy, fit_res in results:
+        metrics = fit_res.metrics or {}
 
-            logical_id = (
-                metrics.get("client_cid")
-                or metrics.get("logical_id")
-                or metrics.get("simulation_index")
-            )
-            if logical_id is None:
-                continue
+        logical_id = (
+            metrics.get("client_cid")
+            or metrics.get("logical_id")
+            or metrics.get("simulation_index")
+        )
+        if logical_id is None:
+            continue
 
-            lid = str(logical_id)
-            participants.append(lid)
+        lid_str = str(logical_id)
+        participants.append(lid_str)
 
-            if "duration" in metrics:
-                round_dur[lid] = float(metrics["duration"])
+        if "duration" in metrics:
+            round_dur[lid_str] = float(metrics["duration"])
 
-        # compute T_max from EMAs (assume you already updated EMA this round)
-        valid_times = [t for t in self.training_times.values() if t is not None]
-        if not valid_times:
-            return
+      # compute T_max from EMAs (assume you already updated EMA this round)
+      valid_times = [t for t in self.training_times.values() if t is not None]
+      if not valid_times:
+        return
 
-        T_max = float(np.mean(valid_times))
+      T_max = float(np.mean(valid_times))
 
-        # predict using logical ids
-        predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
+      # predict using logical ids (keys are the same string lids as in participants)
+      predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
 
-        # ground truth stragglers provided as {"client_0", "client_1", ...}
-        gt_logical_set = self.ground_truth_cids
-        gt_idx_set = {
-            int(cid.split("_", 1)[1])
-            for cid in gt_logical_set
-            if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
+      gt_lid_set = self.round_gt_stragglers.get(server_round, set())
+
+      for lid_str in participants:
+        # try to convert "client_3" or "3" -> 3
+        logical_idx = None
+        try:
+            if lid_str.startswith("client_"):
+                logical_idx = int(lid_str.split("_", 1)[1])
+            else:
+                logical_idx = int(lid_str)
+        except Exception:
+            logical_idx = None
+
+        # ground truth: was this logical index designated as straggler this round?
+        is_gt = (logical_idx is not None) and (logical_idx in gt_lid_set)
+
+        rec = {
+            "round": server_round,
+            "client_id": lid_str,  # logical id as string
+            "logical_id": logical_idx,
+            "T_c": self.training_times.get(lid_str, float("nan")),
+            "T_max": T_max,
+            "s_c": scores.get(lid_str, float("nan")),
+            "actual_duration": round_dur.get(lid_str, float("nan")),
+            "predicted_straggler": lid_str in predicted_set,
+            "ground_truth_straggler": is_gt,
         }
-
-        for lid in participants:
-            try:
-                if lid.startswith("client_"):
-                    logical_idx = int(lid.split("_", 1)[1])
-                else:
-                    logical_idx = int(lid)
-            except Exception:
-                logical_idx = None
-
-            is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
-
-            rec = {
-                "round": server_round,
-                "client_id": lid,  # logical id
-                "logical_id": logical_idx,
-                "T_c": self.training_times.get(lid, float("nan")),
-                "T_max": T_max,
-                "s_c": scores.get(lid, float("nan")),
-                "actual_duration": round_dur.get(lid, float("nan")),
-                "predicted_straggler": lid in predicted_set,
-                "ground_truth_straggler": is_gt,
-            }
-            rec["prediction_type"] = self._classify_prediction(
-                rec["predicted_straggler"], rec["ground_truth_straggler"]
-            )
-            self.validation_history.append(rec)
+        rec["prediction_type"] = self._classify_prediction(
+            rec["predicted_straggler"], rec["ground_truth_straggler"]
+        )
+        self.validation_history.append(rec)
 
     def _observe_mapping(self, results):
       "Capture mappings from Flower UUID to your logical id when available."
