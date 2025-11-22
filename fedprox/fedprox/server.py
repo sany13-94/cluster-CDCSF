@@ -107,27 +107,19 @@ class GPAFStrategy(FedAvg):
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
         map_path="client_id_mapping1.csv"
         self.proto_rows = []   # list of dicts: {"round", "client_id", "proto_score", "domain_id"}
-
+        self.client_prototype_cache = {}  # New field
         self.base_round = base_round     # <--- replace old self.base_round = 0
-
         self.theta =0.13         # optional threshold for s_c
         self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
-
         self.uuid_to_cid = {}     # {"8325...": "client_0"}
         self.cid_to_uuid = {}     # {"client_0": "8325..."}
         self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
         self.ground_truth_flower_ids = set()  # will be filled as clients appear
-        # mappings
-
         self._round_t0 = {}       # round -> start wall-clock time
         self.cum_time_sec = 0.0   # accumulated time across rounds
         self.fig3_rows = []       # list of {"round","elapsed_sec","cum_time_sec","avg_acc"}
-
         self.results_dir=Path("/kaggle/working/cluster-CDCSF/fedprox")
-        # straggler ground truth (fill with your logical ids, e.g., {"client_0", ...})
         self._map_written = False
-        
-        # CSMDA Client Selection Parameters (UPDATED)
         self.training_times = defaultdict(float)
         self.selection_counts = defaultdict(int)
         self.accuracy_history = defaultdict(float)
@@ -142,7 +134,7 @@ class GPAFStrategy(FedAvg):
         os.makedirs(self.save_dir_path, exist_ok=True)
        
         true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
-      
+        
         self.virtual_cluster_id = 999
         self.visualizer = ClusterVisualizationForConfigureFit(
             save_dir="./clustering_visualizations",
@@ -391,6 +383,8 @@ class GPAFStrategy(FedAvg):
         "cum_time_sec": self.cum_time_sec,
         "proto_rows": self.proto_rows,
         "validation_history": self.validation_history,
+        "client_prototype_cache": self.client_prototype_cache  # Persists!,
+
         # NEVER STORE UUIDS
     }
     
@@ -1353,12 +1347,20 @@ class GPAFStrategy(FedAvg):
                             class_counts = pickle.loads(base64.b64decode(class_counts_encoded))
 
                             if isinstance(prototypes, dict) and isinstance(class_counts, dict):
-                                all_prototypes_list.append(prototypes)
-                                all_client_ids.append(uuid)
-                                domains_ids.append(domain_id)
-                                class_counts_list.append(class_counts)
-                                clients_with_prototypes.append(uuid)
-                                print(f"  ✓ Client {uuid}: Prototypes collected")
+                                #all_prototypes_list.append(prototypes)
+                                #all_client_ids.append(uuid)
+                                #domains_ids.append(domain_id)
+                                #class_counts_list.append(class_counts)
+                                #clients_with_prototypes.append(uuid)
+                                #print(f"  ✓ Client {uuid}: Prototypes collected")
+                                # ========== CACHE ON SERVER SIDE ==========
+                                self.client_prototype_cache[lid] = {
+                                    "prototypes": prototypes,
+                                    "class_counts": class_counts,
+                                    "last_round": effective_round,
+                                    "domain_id": domain_id
+                                }
+                                print(f"  ✓ {lid}: Collected & cached prototypes")
 
                         except Exception as decode_error:
                             print(f"  ✗ Client {uuid}: Decode error - {decode_error}")
@@ -1370,6 +1372,15 @@ class GPAFStrategy(FedAvg):
 
             print(f"\n[Prototype Collection] {len(clients_with_prototypes)}/{len(participated_available)} successful")
 
+            # Get all clients that have cached prototypes (current + previous rounds)
+            for lid in self.participated_clients:
+                if lid in self.client_prototype_cache:
+                    cache = self.client_prototype_cache[lid]
+                    all_prototypes_list.append(cache["prototypes"])
+                    all_client_ids.append(lid)
+                    class_counts_list.append(cache["class_counts"])
+                    domains_ids.append(cache.get("domain_id", -1))
+            
             if len(clients_with_prototypes) >= self.num_clusters:
                 print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
 
