@@ -1272,7 +1272,7 @@ class GPAFStrategy(FedAvg):
 
         effective_round = self.base_round + server_round
 
-        in_warmup_phase = effective_round <= warmup_rounds
+        in_warmup_phase = effective_round <= self.warmup_rounds
 
 
         # For logging:
@@ -1346,7 +1346,7 @@ class GPAFStrategy(FedAvg):
                     all_client_ids.append(lid)
                     class_counts_list.append(cache["class_counts"])
                     domains_ids.append(cache.get("domain_id", -1))
-                    
+
                     clients_used_for_clustering.append(lid)
 
 
