@@ -1288,7 +1288,10 @@ class GPAFStrategy(FedAvg):
         if effective_round % 2 != 0 and participated_available and not in_warmup_phase:
             print(f"\n{'─'*80}")
             print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
-
+            # Track which clients we'll use
+            clients_used_for_clustering = []
+            clients_from_previous_run = []  # ← KEY: Track previous run clients
+        
             all_prototypes_list = []
             all_client_ids = []
             class_counts_list = []
@@ -1343,6 +1346,34 @@ class GPAFStrategy(FedAvg):
                     all_client_ids.append(lid)
                     class_counts_list.append(cache["class_counts"])
                     domains_ids.append(cache.get("domain_id", -1))
+                    
+                    clients_used_for_clustering.append(lid)
+
+
+                    # ========== KEY CHECK: Was this client in previous run? ==========
+                    last_round = cache.get("last_round", 0)
+                
+                    # If last_round is from previous run (< current run start)
+                    if last_round <= self.base_round:
+                      # This client's prototypes are from PREVIOUS run!
+                      clients_from_previous_run.append(lid)
+                      print(f"  💾 {lid:15s} - From PREVIOUS run (round {last_round})")
+                    else:
+                      # Fresh from current run
+                      print(f"  🆕 {lid:15s} - From CURRENT run (round {last_round})")
+        
+            # ========== VERIFICATION SUMMARY ==========
+            print(f"\n{'='*80}")
+            print(f"✅ VERIFICATION: Using prototypes from PREVIOUS run")
+            print(f"{'='*80}")
+            print(f"  Total clients for clustering: {len(clients_used_for_clustering)}")
+            print(f"  From PREVIOUS run: {len(clients_from_previous_run)}")
+            if clients_from_previous_run:
+                print(f"  Previous run clients: {clients_from_previous_run}")
+                print(f"\n  ✅ SUCCESS: Server is using {len(clients_from_previous_run)} "
+                  f"client(s) from previous run!")
+            else:
+                  print(f"  ⚠️  No clients from previous run (all fresh)")
             
             if len(clients_with_prototypes) >= self.num_clusters:
                 print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
