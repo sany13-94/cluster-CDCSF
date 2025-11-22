@@ -132,6 +132,7 @@ class GPAFStrategy(FedAvg):
         self.save_dir_path = save_dir
         self.save_every = save_every
         os.makedirs(self.save_dir_path, exist_ok=True)
+        self.round_gt_stragglers = {}   # e.g. { 3: {0, 3, 5}, 4: {3, 7, 10}, ... }
        
         true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
         
@@ -533,12 +534,6 @@ class GPAFStrategy(FedAvg):
     server_round: int,
     results: list,
 ):
-     """
-     For each client that returned FitRes:
-      - use metrics["client_cid"] as logical id (0,1,2,...)
-      - call get_properties("prototypes") on that client
-      - decode, compute proto_score, store in self.proto_rows
-     """
      if not results:
         return
 
@@ -706,11 +701,6 @@ class GPAFStrategy(FedAvg):
             )
             self.validation_history.append(rec)
 
-
-            
-    #strqgglers 
-
-
     def _observe_mapping(self, results):
       "Capture mappings from Flower UUID to your logical id when available."
       for client_proxy, fit_res in results:
@@ -751,8 +741,6 @@ class GPAFStrategy(FedAvg):
         df.to_csv(filename, index=False)
         print(f"Validation results saved to {filename}")
         return df
-
-  
 
     def _fedavg_parameters(
         self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
@@ -964,21 +952,7 @@ class GPAFStrategy(FedAvg):
             print(f"    {cid}: Score={score:.4f} (R={r_score:.3f}, F={f_score:.3f}, selected={v_c}x)")
         
         return final_scores
-    
-    """
-    def _adapt_weights(self, global_round: int) -> Tuple[float, float]:
-      print(f'ss {global_round} and ee {self.total_rounds}')
-      progress = global_round / self.total_rounds
 
-      if progress < 0.4:
-        alpha_1, alpha_2 = 0.8, 0.2
-      elif progress < 0.8:
-        alpha_1, alpha_2 = 0.8, 0.2
-      else:
-        alpha_1, alpha_2 = 0.3, 0.7
-
-      return alpha_1, alpha_2
-    """
     def _adapt_weights(self, global_round: int) -> Tuple[float, float]:
       progress = global_round / self.total_rounds
     
@@ -1474,15 +1448,7 @@ class GPAFStrategy(FedAvg):
                     all_scores[uuid] = lid_scores.get(lid, 0.0)
 
         # 2) New / unmapped clients: neutral reliability, max fairness
-        """
-        if never_participated:
-            print(f"\n[New Clients] Assigning initial scores...")
-            for uuid in never_participated:
-                reliability = 0.5
-                fairness = 1.0
-                all_scores[uuid] = (alpha_1 * reliability) + (alpha_2 * fairness)
-                print(f"  Client {uuid}: R={reliability:.3f}, F={fairness:.3f}, Score={all_scores[uuid]:.3f}")
-        """
+       
         if never_participated:
           for uuid in never_participated:
               reliability = 0.8  # ← Assume fast until proven slow
@@ -1579,25 +1545,40 @@ class GPAFStrategy(FedAvg):
         # =================================================================
         selected_clients_uuids = selected_clients_uuids[:self.min_fit_clients]
 
+        # Which logical clients are allowed to be stragglers?
+        STRAGGLER_LIDS = {0, 3, 5, 7, 10, 12}
+        NUM_STRAGGLERS_PER_ROUND = 3
+
         instructions: List[Tuple[ClientProxy, FitIns]] = []
 
+        # 1) choose which logical ids will be stragglers this round
+        eligible_lids = [lid for lid in STRAGGLER_LIDS if lid in uuid_to_lid.values()]
+        num_to_pick = min(NUM_STRAGGLERS_PER_ROUND, len(eligible_lids))
+        round_straggler_lids = set(random.sample(eligible_lids, num_to_pick))
+
+        print(f"[Round {effective_round}] chosen straggler LIDs: {round_straggler_lids}")
+
+        self.round_gt_stragglers[effective_round] = set(round_straggler_lids)
+
         for uuid in selected_clients_uuids:
-            if uuid in all_clients:
-                client_proxy = all_clients[uuid]
-                client_config = {
-                    "server_round": effective_round,
-                    "simulate_stragglers": "0,1,2",
-                    "delay_base_sec": 20.0,
-                    "delay_jitter_sec": 3.0,
-                    "delay_prob": 1.0,
-                }
+          if uuid in all_clients:
+            client_proxy = all_clients[uuid]
 
-                instructions.append((client_proxy, FitIns(parameters, client_config)))
+            lid = uuid_to_lid.get(uuid)   # logical id (int)
+            is_straggler = lid in round_straggler_lids
 
-                # Update selection counts by logical id
-                lid = uuid_to_lid.get(uuid)
-                if lid is not None:
-                    self.selection_counts[lid] = self.selection_counts.get(lid, 0) + 1
+            client_config = {
+            "server_round": effective_round,
+            "simulate_delay": 1 if is_straggler else 0,
+            "delay_base_sec": 20.0,
+            "delay_jitter_sec": 3.0,
+            "delay_prob": 1.0,
+        }
+
+            instructions.append((client_proxy, FitIns(parameters, client_config)))
+
+            if lid is not None:
+                self.selection_counts[lid] = self.selection_counts.get(lid, 0) + 1
 
         print(f"\n{'='*80}")
         print(f"[Round {server_round}] SELECTION SUMMARY")
