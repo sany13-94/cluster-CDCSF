@@ -598,7 +598,7 @@ class GPAFStrategy(FedAvg):
 
         except Exception as e:
             print(f"  [ProtoLog] client_proxy.cid={client_proxy.cid}: get_properties failed: {e}")
-            
+
     def _predict_stragglers_from_score(self, T_max, client_ids):
       """Return set of predicted stragglers using s_c = 1 - As."""
       scores = {}
@@ -1284,7 +1284,7 @@ class GPAFStrategy(FedAvg):
         # =================================================================
         clusters = defaultdict(list)
 
-        if server_round % 2 != 0 and participated_available and not in_warmup_phase:
+        if effective_round % 2 != 0 and participated_available and not in_warmup_phase:
             print(f"\n{'─'*80}")
             print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
 
@@ -1443,11 +1443,13 @@ class GPAFStrategy(FedAvg):
 
         # 2) New / unmapped clients: neutral reliability, max fairness
        
+        # Score new clients (neutral reliability, max fairness)
         if never_participated:
           for uuid in never_participated:
-              reliability = 0.8  # ← Assume fast until proven slow
-              fairness = 1.0
-              all_scores[uuid] = (alpha_1 * reliability) + (alpha_2 * fairness)
+            reliability = 0.8  # Assume fast until proven slow
+            fairness = 1.0
+            all_scores[uuid] = (alpha_1 * reliability) + (alpha_2 * fairness)
+    
         # =================================================================
         # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS (UUIDs)
         # =================================================================
