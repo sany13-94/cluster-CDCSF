@@ -1268,11 +1268,12 @@ class GPAFStrategy(FedAvg):
         # =================================================================
         # DETERMINE STAGE: WARMUP vs DOMAIN-AWARE
         # =================================================================
-        in_warmup_phase = server_round <= self.warmup_rounds
+        #in_warmup_phase = server_round <= self.warmup_rounds
 
         effective_round = self.base_round + server_round
 
-        in_warmup_phase = effective_round <= self.warmup_rounds
+        in_warmup_phase = effective_round <= warmup_rounds
+
 
         # For logging:
         if in_warmup_phase:
@@ -1315,13 +1316,7 @@ class GPAFStrategy(FedAvg):
                             class_counts = pickle.loads(base64.b64decode(class_counts_encoded))
 
                             if isinstance(prototypes, dict) and isinstance(class_counts, dict):
-                                #all_prototypes_list.append(prototypes)
-                                #all_client_ids.append(uuid)
-                                #domains_ids.append(domain_id)
-                                #class_counts_list.append(class_counts)
-                                #clients_with_prototypes.append(uuid)
-                                #print(f"  ✓ Client {uuid}: Prototypes collected")
-                                # ========== CACHE ON SERVER SIDE ==========
+                              
                                 self.client_prototype_cache[lid] = {
                                     "prototypes": prototypes,
                                     "class_counts": class_counts,
@@ -1440,8 +1435,6 @@ class GPAFStrategy(FedAvg):
                 lid_scores = self.compute_global_selection_scores(lids, server_round)
                 for uuid, lid in lid_by_uuid.items():
                     all_scores[uuid] = lid_scores.get(lid, 0.0)
-
-        # 2) New / unmapped clients: neutral reliability, max fairness
        
         # Score new clients (neutral reliability, max fairness)
         if never_participated:
