@@ -758,7 +758,54 @@ class GPAFStrategy(FedAvg):
         aggregated_params = [param / total_samples for param in aggregated_params]
 
         return aggregated_params
-    
+        
+    def visualize_client_participation(self, participation_dict, save_path="participation_chart.png",
+                                       method_name="FedProto-Fair"):
+
+          # participation_dict: {lid: count}
+          mapped_dict = {}
+          for lid, count in participation_dict.items():
+            mapped_dict[str(lid)] = count
+
+          sorted_items = sorted(mapped_dict.items(), key=lambda x: int(x[0]))
+          client_ids = [f"Client {item[0]}" for item in sorted_items]
+          counts = [item[1] for item in sorted_items]
+
+          fig, ax = plt.subplots(figsize=(14, 6))
+          bars = ax.bar(range(len(client_ids)), counts)
+
+          for i, count in enumerate(counts):
+            if count == 0:
+                bars[i].set_color('red')
+                bars[i].set_alpha(0.5)
+
+          ax.set_xlabel('Client ID (logical)', fontsize=12, fontweight='bold')
+          ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
+          ax.set_title(f'Client Participation Distribution - {method_name}', fontsize=14, fontweight='bold')
+          ax.set_xticks(range(len(client_ids)))
+          ax.set_xticklabels(client_ids, rotation=45, ha='right')
+          ax.grid(axis='y', alpha=0.3, linestyle='--')
+
+          total_clients = len(client_ids)
+          participated = sum(1 for c in counts if c > 0)
+          avg_participation = np.mean(counts) if counts else 0.0
+          std_participation = np.std(counts) if counts else 0.0
+
+          stats_text = (
+            f"Total Clients: {total_clients}\n"
+            f"Participated: {participated} ({(participated/total_clients*100 if total_clients else 0):.1f}%)\n"
+            f"Avg Participation: {avg_participation:.2f} ± {std_participation:.2f}"
+        )
+          ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+                verticalalignment='top', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+                fontsize=10)
+
+          plt.tight_layout()
+          plt.savefig(save_path, dpi=300, bbox_inches='tight')
+          print(f"Visualization saved to {save_path}")
+          plt.close()
+
     def aggregate_evaluate(
         self,
         server_round: int,
