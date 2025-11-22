@@ -678,7 +678,7 @@ class GPAFStrategy(FedAvg):
 
         # ground truth: was this logical index designated as straggler this round?
         is_gt = (logical_idx is not None) and (logical_idx in gt_lid_set)
-
+        print(f' === straggling ======')
         rec = {
             "round": server_round,
             "client_id": lid_str,  # logical id as string
@@ -729,8 +729,7 @@ class GPAFStrategy(FedAvg):
     
     def save_validation_results(self, filename="validation_results.csv"):
         """Save validation results"""
-        
-        
+ 
         df = pd.DataFrame(self.validation_history)
         df.to_csv(filename, index=False)
         print(f"Validation results saved to {filename}")
@@ -758,7 +757,7 @@ class GPAFStrategy(FedAvg):
         aggregated_params = [param / total_samples for param in aggregated_params]
 
         return aggregated_params
-        
+
     def visualize_client_participation(self, participation_dict, save_path="participation_chart.png",
                                        method_name="FedProto-Fair"):
 
