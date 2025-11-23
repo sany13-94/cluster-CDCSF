@@ -81,12 +81,12 @@ class GPAFStrategy(FedAvg):
 
          total_rounds: int = 15,
          save_dir: str = "checkpoints", save_every: int = 10,
-         base_round: int = 0,             # <--- NEW
-        meta_state: Optional[dict] = None,  # <--- NEW
+         
    evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
   
     ) -> None:
         super().__init__(
+          initial_parameters=initial_parameters,  
         )
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
@@ -101,25 +101,33 @@ class GPAFStrategy(FedAvg):
         self.clustering_interval = 8
         # Simple participation counter
         self.client_participation_count = {}  # client_id -> number of times selected
-        self.initial_parameters=initial_parameters
+        
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
         map_path="client_id_mapping1.csv"
         self.proto_rows = []   # list of dicts: {"round", "client_id", "proto_score", "domain_id"}
-        self.client_prototype_cache = {}  # New field
-        self.base_round = base_round     # <--- replace old self.base_round = 0
+
+        self.initial_parameters = None
+        self.base_round = 0
         self.theta =0.13         # optional threshold for s_c
         self.use_topk = getattr(self, "use_topk", True)    # prefer Top-K when you know |S_gt|
+
         self.uuid_to_cid = {}     # {"8325...": "client_0"}
         self.cid_to_uuid = {}     # {"client_0": "8325..."}
         self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
         self.ground_truth_flower_ids = set()  # will be filled as clients appear
+        # mappings
+
         self._round_t0 = {}       # round -> start wall-clock time
         self.cum_time_sec = 0.0   # accumulated time across rounds
         self.fig3_rows = []       # list of {"round","elapsed_sec","cum_time_sec","avg_acc"}
+
         self.results_dir=Path("/kaggle/working/cluster-CDCSF/fedprox")
+        # straggler ground truth (fill with your logical ids, e.g., {"client_0", ...})
         self._map_written = False
+        
+        # CSMDA Client Selection Parameters (UPDATED)
         self.training_times = defaultdict(float)
         self.selection_counts = defaultdict(int)
         self.accuracy_history = defaultdict(float)
@@ -132,10 +140,9 @@ class GPAFStrategy(FedAvg):
         self.save_dir_path = save_dir
         self.save_every = save_every
         os.makedirs(self.save_dir_path, exist_ok=True)
-        self.round_gt_stragglers = {}   # e.g. { 3: {0, 3, 5}, 4: {3, 7, 10}, ... }
        
         true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
-        
+      
         self.virtual_cluster_id = 999
         self.visualizer = ClusterVisualizationForConfigureFit(
             save_dir="./clustering_visualizations",
@@ -160,6 +167,7 @@ class GPAFStrategy(FedAvg):
        
         self.total_rounds=total_rounds
         method_name="CDCSF"
+
         # Store ground truth straggler labels
         self.ground_truth_stragglers = ground_truth_stragglers  # Set of client IDs
         
@@ -212,7 +220,7 @@ class GPAFStrategy(FedAvg):
          experiment = mlflow.get_experiment(experiment_id)
         else:
          print(f"Using existing experiment with ID: {experiment.experiment_id}")
-        
+      
         # Store MLflow reference
         self.mlflow = mlflow
         self.client_to_domain={}
@@ -244,149 +252,51 @@ class GPAFStrategy(FedAvg):
         self.map_path = Path(map_path)
         expected_unique=self.min_fit_clients
         self.expected_unique = expected_unique
+        # Track what we've already recorded: (client_cid, flower_node_id)
+        self._seen= set()
 
-        # Track what we've already recorded: logical_id values
-        self._seen = set()
+        # If the CSV already exists, preload seen pairs (so we don't duplicate)
         if self.map_path.exists():
             try:
+                import pandas as pd
                 df = pd.read_csv(self.map_path, dtype=str)
                 for _, r in df.iterrows():
-                    # file has "logical_id" column
-                    self._seen.add(str(r["logical_id"]))
+                    self._seen.add((str(r["client_cid"]), str(r["flower_node_id"])))
             except Exception:
-                pass
+                pass  # if reading fails, start fresh in memory
 
-        # --- Restore persisted meta-state on resume, if available ---
-        if meta_state is not None:
-            print("[Resume] Restoring meta-state from checkpoint")
 
-            # All keys here are logical ids (lid) as strings
-            self.training_times = meta_state.get("training_times", {})
-            self.selection_counts = meta_state.get("selection_counts", {})
-            self.client_participation_count = meta_state.get("client_participation_count", {})
-            self.participated_clients = set(meta_state.get("participated_clients", []))
-            self.total_rounds_completed = meta_state.get("total_rounds_completed", 0)
 
-            self.client_assignments = meta_state.get("client_assignments", {})
-            self.cluster_prototypes = meta_state.get("cluster_prototypes", {})
 
-            self.fig3_rows = meta_state.get("fig3_rows", [])
-            self.cum_time_sec = meta_state.get("cum_time_sec", 0.0)
-
-            self.proto_rows = meta_state.get("proto_rows", [])
-            self.validation_history = meta_state.get("validation_history", [])
-
-            # Override base_round if stored
-            #self.base_round = meta_state.get("base_round", self.base_round)
-
-            print(f"[Resume] Restored {len(self.training_times)} training_times entries")
-            print(f"[Resume] Restored {len(self.selection_counts)} selection_counts entries")
-            print(f"[Resume] Restored {len(self.participated_clients)} participated clients")
-            print(f"[Resume] base_round = {self.base_round}, total_rounds_completed = {self.total_rounds_completed}")
-    
-
-    def _refresh_uuid_mapping(self, client_manager: ClientManager) -> None:
-          """Ask each client for its logical_id (stable across runs) and 
-          populate uuid_to_cid / cid_to_uuid mapping.
-          Safe to call every round; it will skip already-known UUIDs.
-          """
-          all_clients = client_manager.all()
-          for uuid, client_proxy in all_clients.items():
-            if uuid in self.uuid_to_cid:
-                continue  # already known in this run
-
-            try:
-                res = client_proxy.get_properties(
-                    ins=GetPropertiesIns(config={"request": "identity"}),
-                    timeout=5.0,
-                    group_id=None,
-                )
-                props = res.properties or {}
-                lid = (
-                    props.get("logical_id")
-                    or props.get("client_cid")
-                )
-                if lid is None:
-                    print(f"[Mapping] Client {uuid}: no logical_id in identity response")
-                    continue
-
-                lid = str(lid)
-                self.uuid_to_cid[uuid] = lid
-                self.cid_to_uuid[lid] = uuid
-
-                print(f"[Mapping] Bound uuid={uuid} ↔ lid={lid}")
-
-            except Exception as e:
-                print(f"[Mapping] Failed to query identity for uuid={uuid}: {e}")
-    
     def initialize_parameters(self, client_manager):
-        """Lazy initialization from checkpoint"""
+        # Called once at "round 0"
         if self.initial_parameters is not None:
-            print(f"✅ Loading checkpoint into strategy (round {self.base_round})")
-            # Convert list of ndarrays to Parameters only when needed
-            return ndarrays_to_parameters(self.initial_parameters)
-        
-        print("No checkpoint - initializing from client")
-        return None
+            print("[Resume] Using checkpointed parameters as initial parameters")
+            return self.initial_parameters
+        return super().initialize_parameters(client_manager)
 
 
+    
     def _save_checkpoint(
-      self,
-    server_round: int,
-    aggregated_params: Optional[Parameters] | Optional[list],
-    metrics_aggregated: Dict[str, Scalar],
-) -> None:
-      """Save model and meta-state to disk (one file per *global* round)."""
+        self,
+        server_round: int,
+        parameters_aggregated: Optional[Parameters],
+        metrics_aggregated: Dict[str, Scalar],
+    ) -> None:
+        if parameters_aggregated is None:
+            return  # nothing to save
 
-      # Ensure directory exists
-      os.makedirs(self.save_dir_path, exist_ok=True)
-
-      global_round = self.base_round + server_round
-      ckpt_path = os.path.join(self.save_dir_path, f"round_{global_round:04d}.pkl")
-
-      try:
-        # Normalise to "list of ndarrays"
-        if aggregated_params is None:
-            params_nd = None
-        elif isinstance(aggregated_params, list):
-            # Already a list[np.ndarray] from _fedavg_parameters
-            params_nd = aggregated_params
-        else:
-            # It's a Flower Parameters object
-            params_nd = parameters_to_ndarrays(aggregated_params)
-
+        # Save Flower Parameters + round + metrics with pickle
+        ckpt_path = os.path.join(self.save_dir_path, f"round_{server_round:04d}.pkl")
         data = {
-            "server_round": global_round,
-            "parameters": params_nd,          # list[np.ndarray] or None
+            "server_round": server_round,
+            "parameters": parameters_aggregated,
             "metrics": metrics_aggregated,
-            "meta_state": self._get_meta_state(),  # if you're using meta-state
         }
-
         with open(ckpt_path, "wb") as f:
             pickle.dump(data, f)
+        print(f"[CheckpointFedProx] Saved checkpoint: {ckpt_path}")
 
-        print(f"[CheckpointFedProx] ✅ Saved checkpoint: {ckpt_path}")
-
-      except Exception as e:
-        print(f"[CheckpointFedProx] FAILED to save checkpoint {ckpt_path}: {e}")
-
-    def _get_meta_state(self):
-      return {
-        "training_times": self.training_times,
-        "selection_counts": self.selection_counts,
-        "client_participation_count": self.client_participation_count,
-        "participated_clients": list(self.participated_clients),
-        "total_rounds_completed": self.total_rounds_completed,
-        "client_assignments": self.client_assignments,    # logical IDs only
-        "cluster_prototypes": self.cluster_prototypes,
-        "fig3_rows": self.fig3_rows,
-        "cum_time_sec": self.cum_time_sec,
-        "proto_rows": self.proto_rows,
-        "validation_history": self.validation_history,
-        "client_prototype_cache": self.client_prototype_cache  # Persists!,
-
-        # NEVER STORE UUIDS
-    }
     
     def num_evaluate_clients(self, client_manager: ClientManager) -> Tuple[int, int]:
       """Return the sample size and required number of clients for evaluation."""
@@ -397,7 +307,7 @@ class GPAFStrategy(FedAvg):
     def _append_rows(self, rows: List[dict]) -> None:
         if not rows:
             return
-        header = ["logical_id", "server_uuid"]
+        header = ["server_cid", "client_cid", "flower_node_id"]
         write_header = not self.map_path.exists()
         with self.map_path.open("a", newline="") as f:
             w = csv.DictWriter(f, fieldnames=header)
@@ -405,169 +315,140 @@ class GPAFStrategy(FedAvg):
                 w.writeheader()
             w.writerows(rows)
 
-
-    @staticmethod
-    def parse_logical_id(lid_any) -> int:
-        """
-        Parse any logical ID format to integer.
-        
-        Handles:
-        - "client_0" -> 0
-        - "0" -> 0
-        - 0 -> 0
-        - None -> raises ValueError
-        """
-        if lid_any is None:
-            raise ValueError("Logical ID is None")
-        
-        lid_str = str(lid_any)
-        
-        # Remove "client_" prefix if present
-        if lid_str.startswith("client_"):
-            lid_str = lid_str.replace("client_", "")
-        
-        try:
-            return int(lid_str)
-        except ValueError:
-            raise ValueError(f"Cannot parse logical ID: {lid_any}")
-    
-    @staticmethod
-    def format_logical_id(lid_int: int) -> str:
-        """
-        Format integer ID to standard string format.
-        
-        0 -> "client_0"
-        """
-        return f"client_{lid_int}"
-
     def aggregate_fit(
         self,
         server_round: int,
         results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-        """Aggregate model updates and update meta-state."""
-        if failures:
+      """
+      Aggregate model updates and updat
+      """
+      if failures:
             print(f"[Round {server_round}] Failures: {len(failures)}")
-
-        if not results:
+        
+      if not results:
             print(f"[Round {server_round}] No clients returned results. Skipping aggregation.")
             return None, {}
+      try:  
+        clients_params_list = []
+        num_samples_list = []
+        current_round_durations = []
+        current_participants = set()
+        new_rows: List[dict] = []
 
-        try:
-            clients_params_list = []
-            num_samples_list = []
-            current_round_durations = []
-            current_participants = set()   # set of logical ids
-            new_rows: List[dict] = []
+        # Process results and update tracking
+        for client_proxy, fit_res in results:
+            client_id = client_proxy.cid
+            metrics = fit_res.metrics
+            uuid = client_proxy.cid  # Flower internal UUID            
+            cid = metrics.get("client_cid")
+            node = metrics.get("flower_node_id")
+            self.uuid_to_cid[uuid] = cid
+            self.cid_to_uuid[cid] = uuid
 
-            # Process results and update tracking
-            for client_proxy, fit_res in results:
-                uuid = client_proxy.cid          # Flower internal UUID
-                metrics = fit_res.metrics or {}
+            print(f'===client id: {cid} and flower id {uuid} and node :{node} ===')
 
-                # Logical id from client metrics (our stable key)
-                logical_id = metrics.get("client_cid")
-                if logical_id is None:
-                    logical_id = metrics.get("simulation_index")
+           
+            if client_id not in self.client_participation_count:
+              self.client_participation_count[client_id] = 0
+            self.client_participation_count[client_id] += 1
+            
+            self.participated_clients.add(client_id)
+            current_participants.add(client_id)
+            
+            # Update EMA training time - Equation (4)
+          
+            metrics = fit_res.metrics or {}
+            if "duration" not in metrics:
+                  continue
+            dur = float(metrics["duration"])
+            prev = self.training_times.get(uuid)
+            if prev is None:
+                  ema = dur
+                  print(f"[EMA Init] {uuid}: T_c(0) = {dur:.2f}s")
+            else:
+                ema = self.alpha * dur + (1.0 - self.alpha) * prev
+                print(f"[EMA Update] {uuid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
+            self.training_times[uuid] = ema
 
-                if logical_id is None:
-                    print(f"[aggregate_fit] WARNING: no logical_id for uuid={uuid}, skipping meta tracking")
-                    lid = None
-                else:
-                    lid = str(logical_id)
+           
+            current_round_durations.append(dur)
+            if cid is None or node is None:
+                continue
+            key = (str(int(cid)), str(node))
+            if key not in self._seen:
+                self._seen.add(key)
+                new_rows.append({
+                    "server_cid": client_proxy.cid,        # connection id for reference
+                    "client_cid": key[0],
+                    "flower_node_id": key[1],
+                })
+            self._append_rows(new_rows)
+            if new_rows:
+              print(f"[Server] Recorded {len(new_rows)} new client(s). Total unique: {len(self._seen)}")
+            
+            
+            # Collect parameters for aggregation
+            clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
+            num_samples_list.append(fit_res.num_examples)
+            '''
+            '''
+            # The client should report its logical id once in fit metrics
+            logical = fit_res.metrics.get("logical_id") if fit_res.metrics else None
+            print(f"[Mapping]rtertr ====logical_id={logical} and {self.uuid_to_cid}")
+            print(f"[Mapping]ddd ====: {self.cid_to_uuid}")
 
-                    # Maintain mapping uuid <-> logical id
-                    self.uuid_to_cid[uuid] = lid
-                    self.cid_to_uuid[lid] = uuid
+        
+           
+        self.last_round_participants = current_participants
+        self.total_rounds_completed = server_round
 
-                node = metrics.get("flower_node_id")
-                print(f"=== logical_id: {logical_id}, lid: {lid}, uuid: {uuid}, node: {node} ===")
+        
 
-                # Participation counts and sets (by logical id)
-                if lid is not None:
-                    if lid not in self.client_participation_count:
-                        self.client_participation_count[lid] = 0
-                    self.client_participation_count[lid] += 1
+        self._validate_straggler_predictions(server_round, results)
+        
+        print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
+        print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
+        
+        # Perform FedAvg aggregation
+        # 2) Convert to Flower Parameters
 
-                    self.participated_clients.add(lid)
-                    current_participants.add(lid)
-
-                # EMA training time (also by logical id)
-                if "duration" not in metrics:
-                    continue
-
-                dur = float(metrics["duration"])
-                if lid is not None:
-                    prev = self.training_times.get(lid)
-                    if prev is None:
-                        ema = dur
-                        print(f"[EMA Init] {lid}: T_c(0) = {dur:.2f}s")
-                    else:
-                        ema = self.alpha * dur + (1.0 - self.alpha) * prev
-                        print(f"[EMA Update] {lid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
-                    self.training_times[lid] = ema
-
-                current_round_durations.append(dur)
-
-                # Write mapping CSV (logical_id, server_uuid) once per logical id
-                if lid is not None and lid not in self._seen:
-                    self._seen.add(lid)
-                    new_rows.append({
-                        "logical_id": lid,
-                        "server_uuid": uuid,
-                    })
-
-                self._append_rows(new_rows)
-                if new_rows:
-                    print(f"[Server] Recorded {len(new_rows)} new logical client(s). Total unique: {len(self._seen)}")
-
-                # Collect parameters for aggregation
-                clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
-                num_samples_list.append(fit_res.num_examples)
-
-            self.last_round_participants = current_participants
-            self.total_rounds_completed = server_round
-
-            # Validate straggler predictions (uses logical ids now)
-            self._validate_straggler_predictions(server_round, results)
-
-            print(f"\n[Round {server_round}] Participants (logical ids): {list(current_participants)}")
-            if current_round_durations:
-                print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
-
-            # FedAvg aggregation
-            aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
-
-            # Prototype logging
-            self._log_prototypes_after_fit(server_round, results)
-
-            # Save checkpoint periodically
-            #if server_round % self.save_every == 0:
-            metrics_aggregated = {}
+        aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
+        
+        # After you've iterated over results and updated mappings, durations, etc.
+        self._log_prototypes_after_fit(server_round, results)
+        # Save checkpoint every `save_every` rounds
+        if server_round % self.save_every == 0:
+            metrics_aggregated={}
             self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
 
-            # Finalization at last round
-            global_round=self.base_round+server_round
-            if global_round == self.total_rounds:
-                self.save_client_mapping()
-                print("\n" + "=" * 80)
-                print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
-                print("=" * 80)
-                self._save_all_results()
-                self._save_prototype_heatmap()
+        if server_round == self.total_rounds :
+            self.save_client_mapping()
+            print("\n" + "="*80)
+            print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
+            print("="*80)
+            self._save_all_results()
+            # NEW: prototype-based heatmap
+            self._save_prototype_heatmap()
+        return ndarrays_to_parameters(aggregated_params), {}
 
-            return ndarrays_to_parameters(aggregated_params), {}
-
-        except Exception as e:
-            print(f"[aggregate_fit] Error: {e}")
-            return None, {} 
-    
+      except Exception as e:
+        print(f"[aggregate_fit] Error processing client {getattr(client_proxy,'cid','?')}: {e}")
+        # continue to next client so we still reach the mapping update
+        
+    # ---- in your Strategy class ----
     def _log_prototypes_after_fit(
     self,
     server_round: int,
     results: list,
 ):
+     """
+     For each client that returned FitRes:
+      - use metrics["client_cid"] as logical id (0,1,2,...)
+      - call get_properties("prototypes") on that client
+      - decode, compute proto_score, store in self.proto_rows
+     """
      if not results:
         return
 
@@ -633,7 +514,20 @@ class GPAFStrategy(FedAvg):
         except Exception as e:
             print(f"  [ProtoLog] client_proxy.cid={client_proxy.cid}: get_properties failed: {e}")
 
-    
+
+    def _predict_stragglers_from_score(self, T_max, client_ids):
+      """Return set of predicted stragglers using s_c=1-As."""
+      # compute scores for current participants only
+      scores = {}
+      for cid in client_ids:
+        T_c = self.training_times.get(cid, 0.0)
+        As = T_max / (T_c + self.beta * T_max) if (T_c > 0 and T_max > 0) else 0.0
+        s_c = 1.0 - As
+        scores[cid] = s_c
+     
+      # Thresholded prediction
+      predicted = {cid for cid, s in scores.items() if s >= self.theta}
+      return predicted, scores
 
     def save_client_mapping(self):
 
@@ -650,178 +544,68 @@ class GPAFStrategy(FedAvg):
     def _save_all_results(self):
       
         self.save_participation_stats()
-        self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", )
+        self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", 
+                                )
         self.save_validation_results()
     def _norm(self,label: str) -> str:
       s = str(label).strip()
       return s.replace("client_", "")   # "client_0" -> "0"
+    def _validate_straggler_predictions(self, server_round, results):
+      # participants
+      participants, round_dur = [], {}
+      for client_proxy, fit_res in results:
+        uuid = client_proxy.cid
+        participants.append(uuid)
+        if "duration" in fit_res.metrics:
+            round_dur[uuid] = float(fit_res.metrics["duration"])
 
-    def _predict_stragglers_from_score(
-        self, 
-        T_max: float, 
-        client_ids: List[int]  # CHANGED: Now expects integer IDs
-    ):
-        """
-        Predict stragglers using reliability score s_c = 1 - As.
-        
-        Args:
-            T_max: Maximum training time threshold
-            client_ids: List of INTEGER logical IDs
-        
-        Returns:
-            (predicted_stragglers, scores) - both use integer IDs
-        """
-        scores = {}
-        
-        for cid_int in client_ids:
-            T_c = self.training_times.get(cid_int, 0.0)
-            
-            if T_c > 0 and T_max > 0:
-                As = T_max / (T_c + self.beta * T_max)
-            else:
-                As = 0.0
-            
-            s_c = 1.0 - As  # Straggler score (higher = more likely straggler)
-            scores[cid_int] = s_c
-        
-        # Predict stragglers (score >= threshold)
-        predicted = {cid for cid, s in scores.items() if s >= self.theta}
-        
-        return predicted, scores
+      # compute T_max from EMAs (assume you already updated EMA this round)
+      valid_times = [t for t in self.training_times.values() if t is not None]
+      if not valid_times:
+        return
+      T_max = float(np.mean(valid_times))
+
+      # predict (your existing code)
+      predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
+
+      # robust ground-truth check: UUID OR logical label
+      gt_uuid_set = self.cid_to_uuid    # UUIDs
+      
+      gt_logical_set = self.ground_truth_cids             # {"client_0","client_1",...}
+      gt_idx_set = {
+    int(cid.split("_", 1)[1])
+    for cid in gt_logical_set
+    if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
+}  
     
-    # ========================================================================
-    # VALIDATION
-    # ========================================================================
-    
-    def _validate_straggler_predictions(self, server_round: int, results):
-        """
-        Validate straggler predictions using INTEGER logical IDs.
-        """
-        print(f"\n{'='*80}")
-        print(f"[STRAGGLER VALIDATION] Round {server_round}")
-        print(f"{'='*80}")
-        
-        # Collect participants and durations (use INTEGER IDs)
-        participants: List[int] = []
-        round_durations: Dict[int, float] = {}
-        
-        for client_proxy, fit_res in results:
-            metrics = fit_res.metrics or {}
+      for uuid in participants:
+          val = self.uuid_to_cid.get(uuid)  # could be "0" or 0 or None
+          try:
+            logical_idx = int(val) if val is not None else None
+          except (TypeError, ValueError):
+            logical_idx = None
+
+          is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
+          print(f'===== {is_gt} and {self._norm(logical_idx)} and {gt_logical_set}')
+          print(f'===== {gt_uuid_set} and {uuid} and {gt_idx_set}')
+
+          rec = {
+            "round": server_round,
+            "client_id": uuid,
+            "logical_id": logical_idx,
+            "T_c": self.training_times.get(uuid, float("nan")),
+            "T_max": T_max,
+            "s_c": scores.get(uuid, float("nan")),
+            "actual_duration": round_dur.get(uuid, float("nan")),
+            "predicted_straggler": uuid in predicted_set,
+            "ground_truth_straggler": is_gt,                         # <-- now correct
+        }
+          rec["prediction_type"] = self._classify_prediction(rec["predicted_straggler"], rec["ground_truth_straggler"])
+          self.validation_history.append(rec)
+
             
-            lid_raw = (
-                metrics.get("logical_id") or 
-                metrics.get("client_cid") or 
-                metrics.get("simulation_index")
-            )
-            
-            try:
-                lid_int = self.parse_logical_id(lid_raw)
-            except ValueError:
-                continue
-            
-            participants.append(lid_int)
-            
-            if "duration" in metrics:
-                round_durations[lid_int] = float(metrics["duration"])
-        
-        if not participants:
-            print("  ⚠ No participants to validate")
-            return
-        
-        # Compute T_max from EMAs
-        valid_times = [t for t in self.training_times.values() if t is not None and t > 0]
-        if not valid_times:
-            print("  ⚠ No valid training times")
-            return
-        
-        T_max = float(np.mean(valid_times))
-        
-        # Predict stragglers (now uses integer IDs)
-        predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
-        
-        # Get ground truth for this round (integer IDs)
-        gt_straggler_set = self.round_gt_stragglers.get(server_round, set())
-        
-        print(f"\n  Ground truth stragglers: {gt_straggler_set}")
-        print(f"  Predicted stragglers: {predicted_set}")
-        print(f"  T_max (EMA mean): {T_max:.2f}s")
-        
-        # Validation metrics
-        tp = fp = tn = fn = 0
-        
-        print(f"\n  Per-Client Validation:")
-        print(f"  {'Client':<12} {'Duration':<10} {'EMA':<10} {'Score':<8} {'Pred':<6} {'GT':<6} {'Result':<10}")
-        print(f"  {'-'*80}")
-        
-        for lid_int in participants:
-            T_c = self.training_times.get(lid_int, float('nan'))
-            s_c = scores.get(lid_int, float('nan'))
-            actual_dur = round_durations.get(lid_int, float('nan'))
-            
-            is_predicted = lid_int in predicted_set
-            is_gt = lid_int in gt_straggler_set
-            
-            # Classify prediction
-            if is_predicted and is_gt:
-                result = "TP"
-                tp += 1
-            elif is_predicted and not is_gt:
-                result = "FP"
-                fp += 1
-            elif not is_predicted and is_gt:
-                result = "FN"
-                fn += 1
-            else:
-                result = "TN"
-                tn += 1
-            
-            pred_str = "YES" if is_predicted else "NO"
-            gt_str = "YES" if is_gt else "NO"
-            
-            print(f"  {self.format_logical_id(lid_int):<12} "
-                  f"{actual_dur:<10.2f} {T_c:<10.2f} {s_c:<8.3f} "
-                  f"{pred_str:<6} {gt_str:<6} {result:<10}")
-            
-            # Store validation record
-            rec = {
-                "round": server_round,
-                "client_id": lid_int,  # Store as integer
-                "T_c": T_c,
-                "T_max": T_max,
-                "s_c": s_c,
-                "actual_duration": actual_dur,
-                "predicted_straggler": is_predicted,
-                "ground_truth_straggler": is_gt,
-                "prediction_type": result
-            }
-            self.validation_history.append(rec)
-        
-        # Summary statistics
-        total = tp + fp + tn + fn
-        accuracy = (tp + tn) / total if total > 0 else 0
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        
-        print(f"\n  Validation Metrics:")
-        print(f"    TP: {tp}, FP: {fp}, TN: {tn}, FN: {fn}")
-        print(f"    Accuracy:  {accuracy:.3f}")
-        print(f"    Precision: {precision:.3f}")
-        print(f"    Recall:    {recall:.3f}")
-        print(f"    F1-Score:  {f1:.3f}")
-        print(f"{'='*80}\n")
-    
-    @staticmethod
-    def _classify_prediction(predicted: bool, ground_truth: bool) -> str:
-        """Classify prediction type."""
-        if predicted and ground_truth:
-            return "TP"
-        elif predicted and not ground_truth:
-            return "FP"
-        elif not predicted and ground_truth:
-            return "FN"
-        else:
-            return "TN"
+    #strqgglers 
+
 
     def _observe_mapping(self, results):
       "Capture mappings from Flower UUID to your logical id when available."
@@ -857,11 +641,14 @@ class GPAFStrategy(FedAvg):
     
     def save_validation_results(self, filename="validation_results.csv"):
         """Save validation results"""
- 
+        
+        
         df = pd.DataFrame(self.validation_history)
         df.to_csv(filename, index=False)
         print(f"Validation results saved to {filename}")
         return df
+
+  
 
     def _fedavg_parameters(
         self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
@@ -885,54 +672,7 @@ class GPAFStrategy(FedAvg):
         aggregated_params = [param / total_samples for param in aggregated_params]
 
         return aggregated_params
-
-    def visualize_client_participation(self, participation_dict, save_path="participation_chart.png",
-                                       method_name="FedProto-Fair"):
-
-          # participation_dict: {lid: count}
-          mapped_dict = {}
-          for lid, count in participation_dict.items():
-            mapped_dict[str(lid)] = count
-
-          sorted_items = sorted(mapped_dict.items(), key=lambda x: int(x[0]))
-          client_ids = [f"Client {item[0]}" for item in sorted_items]
-          counts = [item[1] for item in sorted_items]
-
-          fig, ax = plt.subplots(figsize=(14, 6))
-          bars = ax.bar(range(len(client_ids)), counts)
-
-          for i, count in enumerate(counts):
-            if count == 0:
-                bars[i].set_color('red')
-                bars[i].set_alpha(0.5)
-
-          ax.set_xlabel('Client ID (logical)', fontsize=12, fontweight='bold')
-          ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
-          ax.set_title(f'Client Participation Distribution - {method_name}', fontsize=14, fontweight='bold')
-          ax.set_xticks(range(len(client_ids)))
-          ax.set_xticklabels(client_ids, rotation=45, ha='right')
-          ax.grid(axis='y', alpha=0.3, linestyle='--')
-
-          total_clients = len(client_ids)
-          participated = sum(1 for c in counts if c > 0)
-          avg_participation = np.mean(counts) if counts else 0.0
-          std_participation = np.std(counts) if counts else 0.0
-
-          stats_text = (
-            f"Total Clients: {total_clients}\n"
-            f"Participated: {participated} ({(participated/total_clients*100 if total_clients else 0):.1f}%)\n"
-            f"Avg Participation: {avg_participation:.2f} ± {std_participation:.2f}"
-        )
-          ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-                verticalalignment='top', horizontalalignment='right',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-                fontsize=10)
-
-          plt.tight_layout()
-          plt.savefig(save_path, dpi=300, bbox_inches='tight')
-          print(f"Visualization saved to {save_path}")
-          plt.close()
-
+    
     def aggregate_evaluate(
         self,
         server_round: int,
@@ -1036,7 +776,12 @@ class GPAFStrategy(FedAvg):
         
         # T_max = (1/N) * Σ T_c(i) for all clients
         T_max = np.mean(valid_times)
-
+        
+        print(f"\n[Reliability Scores] Round {self.total_rounds_completed}")
+        print(f"  T_max (system average EMA): {T_max:.2f}s")
+        print(f"  β (penalty strength): {self.beta}")
+        print(f"  β * T_max: {self.beta * T_max:.2f}s")
+        
         # Calculate reliability score for each client - Equation (6)
         for client_id in client_ids:
             # Get client's EMA training time
@@ -1120,20 +865,30 @@ class GPAFStrategy(FedAvg):
             print(f"    {cid}: Score={score:.4f} (R={r_score:.3f}, F={f_score:.3f}, selected={v_c}x)")
         
         return final_scores
+    
+    
+    def _adapt_weights(self, server_round: int) -> Tuple[float, float]:
+        
+        print(f'ss {server_round} and ee {self.total_rounds}')
+        progress = server_round / self.total_rounds
+        
+        if progress < 0.4 :
+          # Early phase (0-20%): Prioritize reliability for stable initial model
+          alpha_1, alpha_2 = 0.8, 0.2
 
-    def _adapt_weights(self, global_round: int) -> Tuple[float, float]:
-      progress = global_round / self.total_rounds
+        elif progress < 0.8:
+            # Middle phase (20-80%): Balanced approach
+            alpha_1, alpha_2 = 0.8, 0.2
+        
+   
+        else:
+            # Late phase (80-100%): Prioritize fairness for comprehensive coverage
+            alpha_1, alpha_2 = 0.3, 0.7
+       
+       
+       
+        return alpha_1, alpha_2
     
-      if progress < 0.1:        # First 10%: EXPLORATION
-        alpha_1, alpha_2 = 0.3, 0.7  # Prioritize FAIRNESS to discover clients
-      elif progress < 0.4:      # 10-40%: TRANSITION
-        alpha_1, alpha_2 = 0.6, 0.4  # Balanced
-      elif progress < 0.8:      # 40-80%: EXPLOITATION
-        alpha_1, alpha_2 = 0.8, 0.2  # Prioritize RELIABILITY
-      else:                     # Final 20%: FAIRNESS
-        alpha_1, alpha_2 = 0.3, 0.7  # Ensure fair participation
-    
-      return alpha_1, alpha_2
     
     def select_clients_from_cluster(
         self,
@@ -1173,7 +928,8 @@ class GPAFStrategy(FedAvg):
         
         return selected
     
-   
+      
+  
     def _visualize_clusters(self, prototypes, client_ids, server_round, true_domain_map=None):
     
       # 1. Flatten prototypes: one vector per client
@@ -1309,494 +1065,439 @@ class GPAFStrategy(FedAvg):
         except Exception as e:
             print(f"Error computing metrics: {e}")
     
-        def visualize_client_participation(self, participation_dict, save_path="participation_chart.png",
-                                       method_name="FedProto-Fair"):
+    def visualize_client_participation(self, participation_dict, save_path="participation_chart.png", 
+                                   method_name="FedProto-Fair"):
 
-          # participation_dict: {lid: count}
-          mapped_dict = {}
-          for lid, count in participation_dict.items():
-            mapped_dict[str(lid)] = count
+      # ✅ Load UUID → cid mapping
+      mapping_df = pd.read_csv("client_id_mapping1.csv")
+      uuid_to_cid = dict(zip(mapping_df["flower_node_id"].astype(str),
+                           mapping_df["client_cid"].astype(str)))
 
-          sorted_items = sorted(mapped_dict.items(), key=lambda x: int(x[0]))
-          client_ids = [f"Client {item[0]}" for item in sorted_items]
-          counts = [item[1] for item in sorted_items]
+      # ✅ Convert participation_dict keys using mapping
+      mapped_dict = {}
+      for uuid, count in participation_dict.items():
+        uuid_str = str(uuid)
+        cid = uuid_to_cid.get(uuid_str, f"UNK-{uuid}")  # fallback: unknown
+        print('======{cid}====')
+        mapped_dict[cid] = count
 
-          fig, ax = plt.subplots(figsize=(14, 6))
-          bars = ax.bar(range(len(client_ids)), counts)
+      # ✅ Sort clients by numeric cid
+      sorted_items = sorted(mapped_dict.items(), key=lambda x: int(x[0]))
+      client_ids = [f"Client {item[0]}" for item in sorted_items]
+      counts = [item[1] for item in sorted_items]
 
-          for i, count in enumerate(counts):
-            if count == 0:
-                bars[i].set_color('red')
-                bars[i].set_alpha(0.5)
+      # ✅ Plot exactly same as before (using client_ids now)
+      fig, ax = plt.subplots(figsize=(14, 6))
+      bars = ax.bar(range(len(client_ids)), counts)
 
-          ax.set_xlabel('Client ID (logical)', fontsize=12, fontweight='bold')
-          ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
-          ax.set_title(f'Client Participation Distribution - {method_name}', fontsize=14, fontweight='bold')
-          ax.set_xticks(range(len(client_ids)))
-          ax.set_xticklabels(client_ids, rotation=45, ha='right')
-          ax.grid(axis='y', alpha=0.3, linestyle='--')
+      for i, count in enumerate(counts):
+        if count == 0:
+            bars[i].set_color('red')
+            bars[i].set_alpha(0.5)
 
-          total_clients = len(client_ids)
-          participated = sum(1 for c in counts if c > 0)
-          avg_participation = np.mean(counts) if counts else 0.0
-          std_participation = np.std(counts) if counts else 0.0
+      ax.set_xlabel('Client ID', fontsize=12, fontweight='bold')
+      ax.set_ylabel('Number of Participations', fontsize=12, fontweight='bold')
+      ax.set_title(f'Client Participation Distribution - {method_name}', fontsize=14, fontweight='bold')
+      ax.set_xticks(range(len(client_ids)))
+      ax.set_xticklabels(client_ids, rotation=45, ha='right')
+      ax.grid(axis='y', alpha=0.3, linestyle='--')
 
-          stats_text = (
-            f"Total Clients: {total_clients}\n"
-            f"Participated: {participated} ({(participated/total_clients*100 if total_clients else 0):.1f}%)\n"
-            f"Avg Participation: {avg_participation:.2f} ± {std_participation:.2f}"
-        )
-          ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
-                verticalalignment='top', horizontalalignment='right',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
-                fontsize=10)
+      total_clients = len(client_ids)
+      participated = sum(1 for c in counts if c > 0)
+      avg_participation = np.mean(counts)
+      std_participation = np.std(counts)
 
-          plt.tight_layout()
-          plt.savefig(save_path, dpi=300, bbox_inches='tight')
-          print(f"Visualization saved to {save_path}")
-          plt.close()
-    
-    # In your Strategy class, add this visualization:
-    def _save_selection_heatmap(self):
-      """Visualize client selection pattern over rounds."""
-      rounds = []
-      client_ids = []
-      for round_num, selected_clients in self.round_selections.items():
-        for client_id in selected_clients:
-            rounds.append(round_num)
-            client_ids.append(client_id)
-    
-      df = pd.DataFrame({'round': rounds, 'client_id': client_ids})
-      heatmap_data = df.pivot_table(
-        index='client_id', 
-        columns='round', 
-        aggfunc='size', 
-        fill_value=0
-    )
-    
-      plt.figure(figsize=(12, 8))
-      sns.heatmap(heatmap_data, cmap='YlOrRd', cbar_kws={'label': 'Selected'})
-      plt.xlabel('Training Round')
-      plt.ylabel('Client ID')
-      plt.title('Client Selection Pattern: Exploration → Exploitation → Fairness')
-    
-      # Add phase annotations
-      plt.axvline(x=self.total_rounds * 0.1, color='blue', 
-                linestyle='--', label='Exploration End')
-      plt.axvline(x=self.total_rounds * 0.75, color='green', 
-                linestyle='--', label='Fairness Start')
-      plt.legend()
-      plt.savefig(self.results_dir / 'selection_heatmap.png', dpi=300, bbox_inches='tight')
+      stats_text = f"Total Clients: {total_clients}\nParticipated: {participated} ({participated/total_clients*100:.1f}%)\nAvg Participation: {avg_participation:.2f} ± {std_participation:.2f}"
+      ax.text(0.98, 0.98, stats_text, transform=ax.transAxes,
+            verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+            fontsize=10)
+
+      plt.tight_layout()
+      plt.savefig(save_path, dpi=300, bbox_inches='tight')
+      print(f"Visualization saved to {save_path}")
+      plt.show()
+
 
     def configure_fit(
-        self,
-        server_round: int,
-        parameters: Parameters,
-        client_manager: ClientManager
-    ) -> List[Tuple[ClientProxy, FitIns]]:
-        effective_round = self.base_round + server_round
-
-        print(f"\n{'='*80}")
-        print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION (global={effective_round})")
-        print(f"{'='*80}")
-
-        # 1) Refresh mapping: uuid -> logical_id
-        self._refresh_uuid_mapping(client_manager)
-
-        # Get all available clients (UUIDs)
-        all_clients = client_manager.all()
-        available_uuids = list(all_clients.keys())
-
-        # ---- start-of-round timer ----
-        self._round_t0[server_round] = time.time()
-        if not available_uuids:
-            print(f"[Round {server_round}] No clients available.")
-            return []
-
-        # Build UUID -> logical id mapping for currently known clients
-        uuid_to_lid: Dict[str, Optional[str]] = {}
-        for uuid in available_uuids:
-            lid = self.uuid_to_cid.get(uuid)
-            uuid_to_lid[uuid] = lid
-
-        print(f"\n[Client Status]")
-        print(f"  Total available clients: {len(available_uuids)}")
-        print(f"  Previously participated (logical ids): {len(self.participated_clients)}")
-
-        # Categorize clients (by uuid, but using lid membership)
-        participated_available = []   # uuids with known lid that has participated
-        never_participated = []       # uuids whose lid not in participated set (or lid unknown)
-
-        for uuid in available_uuids:
-            lid = uuid_to_lid.get(uuid)
-            if lid is not None and lid in self.participated_clients:
-                participated_available.append(uuid)
-            else:
-                never_participated.append(uuid)
-
-        print(f"  Available participated clients: {len(participated_available)}")
-        print(f"  Available never-participated clients: {len(never_participated)}")
-
-        # =================================================================
-        # DETERMINE STAGE: WARMUP vs DOMAIN-AWARE
-        # =================================================================
-        #in_warmup_phase = server_round <= self.warmup_rounds
-
-        effective_round = self.base_round + server_round
-
-        in_warmup_phase = effective_round <= self.warmup_rounds
-
-
-        # For logging:
-        if in_warmup_phase:
-            print(f"\n[STAGE 1: WARMUP PHASE] Global Round {effective_round}/{self.warmup_rounds}")
-        else:
-            print(f"\n[STAGE 2: DOMAIN-AWARE PHASE] Global Round {effective_round}")
-        # =================================================================
-        # PHASE 1: CLUSTERING (unchanged logic, still uses UUIDs)
-        # =================================================================
-        clusters = defaultdict(list)
-
-        if effective_round % 2 != 0 and participated_available and not in_warmup_phase:
-            print(f"\n{'─'*80}")
-            print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
-            # Track which clients we'll use
-            clients_used_for_clustering = []
-            clients_from_previous_run = []  # ← KEY: Track previous run clients
-        
-            all_prototypes_list = []
-            all_client_ids = []
-            class_counts_list = []
-            clients_with_prototypes = []
-            domains_ids = []
-
-            for uuid in participated_available:
-                client_proxy = all_clients[uuid]
-
-                try:
-                    get_protos_res = client_proxy.get_properties(
-                        ins=GetPropertiesIns(config={"request": "prototypes"}),
-                        timeout=15.0,
-                        group_id=None
-                    )
-
-                    props = get_protos_res.properties
-                    prototypes_encoded = props.get("prototypes")
-                    class_counts_encoded = props.get("class_counts")
-                    domain_id = int(props.get("domain_id", -1))
-
-                    if prototypes_encoded and class_counts_encoded:
-                        try:
-                            prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
-                            class_counts = pickle.loads(base64.b64decode(class_counts_encoded))
-
-                            if isinstance(prototypes, dict) and isinstance(class_counts, dict):
-                              
-                                self.client_prototype_cache[lid] = {
-                                    "prototypes": prototypes,
-                                    "class_counts": class_counts,
-                                    "last_round": effective_round,
-                                    "domain_id": domain_id
-                                }
-                                print(f"  ✓ {lid}: Collected & cached prototypes")
-
-                        except Exception as decode_error:
-                            print(f"  ✗ Client {uuid}: Decode error - {decode_error}")
-                    else:
-                        print(f"  ⚠ Client {uuid}: No prototypes available")
-
-                except Exception as e:
-                    print(f"  ⚠ Client {uuid}: Communication failed - {e}")
-
-            print(f"\n[Prototype Collection] {len(clients_with_prototypes)}/{len(participated_available)} successful")
-
-            # Get all clients that have cached prototypes (current + previous rounds)
-            for lid in self.participated_clients:
-                if lid in self.client_prototype_cache:
-                    cache = self.client_prototype_cache[lid]
-                    all_prototypes_list.append(cache["prototypes"])
-                    all_client_ids.append(lid)
-                    class_counts_list.append(cache["class_counts"])
-                    domains_ids.append(cache.get("domain_id", -1))
-
-                    clients_used_for_clustering.append(lid)
-
-
-                    # ========== KEY CHECK: Was this client in previous run? ==========
-                    last_round = cache.get("last_round", 0)
-                
-                    # If last_round is from previous run (< current run start)
-                    if last_round <= self.base_round:
-                      # This client's prototypes are from PREVIOUS run!
-                      clients_from_previous_run.append(lid)
-                      print(f"  💾 {lid:15s} - From PREVIOUS run (round {last_round})")
-                    else:
-                      # Fresh from current run
-                      print(f"  🆕 {lid:15s} - From CURRENT run (round {last_round})")
-        
-            # ========== VERIFICATION SUMMARY ==========
-            print(f"\n{'='*80}")
-            print(f"✅ VERIFICATION: Using prototypes from PREVIOUS run")
-            print(f"{'='*80}")
-            print(f"  Total clients for clustering: {len(clients_used_for_clustering)}")
-            print(f"  From PREVIOUS run: {len(clients_from_previous_run)}")
-            if clients_from_previous_run:
-                print(f"  Previous run clients: {clients_from_previous_run}")
-                print(f"\n  ✅ SUCCESS: Server is using {len(clients_from_previous_run)} "
-                  f"client(s) from previous run!")
-            else:
-                  print(f"  ⚠️  No clients from previous run (all fresh)")
-            
-            if len(clients_with_prototypes) >= self.num_clusters:
-                print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
-
-                if not self.cluster_prototypes:
-                    print("  Initializing cluster prototypes with k-means++...")
-                    self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
-
-                global_assignments = self._e_step(all_prototypes_list, all_client_ids)
-                self.cluster_prototypes = self._m_step(
-                    all_prototypes_list,
-                    all_client_ids,
-                    global_assignments,
-                    class_counts_list
-                )
-
-                for client_id, cluster_id in global_assignments.items():
-                    self.client_assignments[client_id] = cluster_id
-
-                print(f"\n[Clustering Results]")
-                for cluster_id in range(self.num_clusters):
-                    cluster_clients = [cid for cid, clust in self.client_assignments.items()
-                                       if clust == cluster_id]
-                    if cluster_clients:
-                        print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
-
-                if len(all_prototypes_list) >= self.num_clusters:
-                    self._visualize_clusters(
-                        prototypes=all_prototypes_list,
-                        client_ids=all_client_ids,
-                        server_round=server_round,
-                        true_domain_map=None
-                    )
-            else:
-                print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
-                print(f"  Will use unified pool selection")
-
-        # =================================================================
-        # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS OR UNIFIED POOL (UUIDs)
-        # =================================================================
-        if in_warmup_phase or not self.client_assignments:
-            print(f"\n[Client Organization] UNIFIED POOL MODE")
-            clusters[0] = participated_available + never_participated
-            print(f"  Single pool: {len(clusters[0])} clients")
-        else:
-            print(f"\n[Client Organization] DOMAIN-AWARE MODE")
-
-            for uuid in participated_available:
-                if uuid in self.client_assignments:
-                    cluster_id = self.client_assignments[uuid]
-                    clusters[cluster_id].append(uuid)
-                else:
-                    clusters[0].append(uuid)
-
-            if never_participated and self.use_virtual_cluster:
-                clusters[self.virtual_cluster_id] = never_participated
-                print(f"  Virtual Cluster {self.virtual_cluster_id}: {len(never_participated)} new clients")
-
-            for cluster_id in sorted(clusters.keys()):
-                cluster_clients = clusters[cluster_id]
-                cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
-                print(f"  Cluster {cluster_id} [{cluster_type}]: {len(cluster_clients)} clients")
-
-        print(f"\n[Active Clusters] {len(clusters)} cluster(s)")
-
-        # =================================================================
-        # PHASE 3: COMPUTE GLOBAL SELECTION SCORES (LIDs -> map back to UUIDs)
-        # =================================================================
-        print(f"\n{'─'*80}")
-        print(f"[Score Computation] Round {server_round}")
-        print(f"{'─'*80}")
-
-        alpha_1, alpha_2 = self._adapt_weights(effective_round)
-        print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
-
-        all_scores: Dict[str, float] = {}  # uuid -> score
-
-        # 1) Participated clients: use full method on logical ids
-        if participated_available:
-            print(f"\n[Participated Clients] Computing reliability + fairness scores...")
-            lids = []
-            lid_by_uuid = {}
-            for uuid in participated_available:
-                lid = uuid_to_lid.get(uuid)
-                if lid is not None:
-                    lids.append(lid)
-                    lid_by_uuid[uuid] = lid
-
-            if lids:
-                lid_scores = self.compute_global_selection_scores(lids, server_round)
-                for uuid, lid in lid_by_uuid.items():
-                    all_scores[uuid] = lid_scores.get(lid, 0.0)
-       
-        # Score new clients (neutral reliability, max fairness)
-        if never_participated:
-          for uuid in never_participated:
-            reliability = 0.8  # Assume fast until proven slow
-            fairness = 1.0
-            all_scores[uuid] = (alpha_1 * reliability) + (alpha_2 * fairness)
+    self, 
+    server_round: int, 
+    parameters: Parameters, 
+    client_manager: ClientManager
+) -> List[Tuple[ClientProxy, FitIns]]:
+      effective_round = self.base_round + server_round
+     
+      
+      print(f"\n{'='*80}")
+      print(f"[Round {server_round}] TWO-STAGE RESOURCE-AWARE FAIR SELECTION")
+      print(f"{'='*80}")
     
-        # =================================================================
-        # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS (UUIDs)
-        # =================================================================
+      # Get all available clients
+      all_clients = client_manager.all()
+      available_client_cids = list(all_clients.keys())
+      # ---- start-of-round timer ----
+      
+      self._round_t0[server_round] = time.time()
+      if not available_client_cids:
+        print(f"[Round {server_round}] No clients available.")
+        return []
+
+      print(f"\n[Client Status]")
+      print(f"  Total available clients: {len(available_client_cids)}")
+      print(f"  Previously participated: {len(self.participated_clients)}")
+    
+      # Categorize clients
+      participated_available = [cid for cid in available_client_cids 
+                             if cid in self.participated_clients]
+      never_participated = [cid for cid in available_client_cids 
+                         if cid not in self.participated_clients]
+    
+      print(f"  Available participated clients: {len(participated_available)}")
+      print(f"  Available never-participated clients: {len(never_participated)}")
+
+      # =================================================================
+      # DETERMINE STAGE: WARMUP vs DOMAIN-AWARE
+      # =================================================================
+      in_warmup_phase = server_round <= self.warmup_rounds
+      clustering_round = (server_round > self.warmup_rounds and 
+                       server_round % self.clustering_interval == 0)
+
+      
+    
+      if in_warmup_phase:
+        print(f"\n[STAGE 1: WARMUP PHASE] Round {server_round}/{self.warmup_rounds}")
+        print(f"  Operating on unified client pool (no clustering)")
+        print(f"  Establishing baseline participation patterns")
+      else:
+        print(f"\n[STAGE 2: DOMAIN-AWARE PHASE] Post-warmup clustering enabled")
+
+      # =================================================================
+      # PHASE 1: CLUSTERING (Only in Stage 2, periodically)
+      # =================================================================
+      clusters = defaultdict(list)
+    
+      if server_round% 2!=0 and participated_available and in_warmup_phase==False:
         print(f"\n{'─'*80}")
-        print(f"[Selection Distribution]")
-        print(f"{'─'*80}")
+        print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
+       
+        
+        all_prototypes_list = []
+        all_client_ids = []
+        class_counts_list = []
+        clients_with_prototypes = []
+        domains_ids=[]
+        # Collect prototypes from ALL participated clients
+        for cid in participated_available:
+            client_proxy = all_clients[cid]
+            client_id=int(cid)
+            
+            try:
+                get_protos_res = client_proxy.get_properties(
+                    ins=GetPropertiesIns(config={"request": "prototypes"}), 
+                    timeout=15.0,
+                    group_id=None
+                )
+                
+                prototypes_encoded = get_protos_res.properties.get("prototypes")
+                class_counts_encoded = get_protos_res.properties.get("class_counts")
+                domain_id =int(get_protos_res.properties.get("domain_id", None))
+                
+                print(f'==== clients domains {domains_ids}=====')
+                if prototypes_encoded and class_counts_encoded:
+                    try:
+                        prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
+                        class_counts = pickle.loads(base64.b64decode(class_counts_encoded))
+                        
+                        if isinstance(prototypes, dict) and isinstance(class_counts, dict):
+                            all_prototypes_list.append(prototypes)
+                            all_client_ids.append(cid)
+                            domains_ids.append(domain_id)
+                            class_counts_list.append(class_counts)
+                            clients_with_prototypes.append(cid)
+                            print(f"  ✓ Client {cid}: Prototypes collected")
+                            
+                    except Exception as decode_error:
+                        print(f"  ✗ Client {cid}: Decode error - {decode_error}")
+                else:
+                    print(f"  ⚠ Client {cid}: No prototypes available")
+                    
+            except Exception as e:
+                print(f"  ⚠ Client {cid}: Communication failed - {e}")
 
-        if not clusters:
-            print("No clusters available")
-            return []
+        print(f"\n[Prototype Collection] {len(clients_with_prototypes)}/{len(participated_available)} successful")
+      
+        # Perform EM clustering if enough clients
+        if len(clients_with_prototypes) >= self.num_clusters:
+            print(f"\n[EM Clustering] Processing {len(clients_with_prototypes)} clients...")
+            
+            # Initialize cluster prototypes if first time
+            if not self.cluster_prototypes:
+                print("  Initializing cluster prototypes with k-means++...")
+                self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
+            
+            # E-step: Assign clients to clusters
+            global_assignments = self._e_step(all_prototypes_list, all_client_ids)
+            
+            # M-step: Update cluster prototypes
+            self.cluster_prototypes = self._m_step(
+                all_prototypes_list, 
+                all_client_ids, 
+                global_assignments, 
+                class_counts_list
+            )
+            
+            # Update cluster assignments
+            for client_id, cluster_id in global_assignments.items():
+                self.client_assignments[client_id] = cluster_id
+            
+            print(f"\n[Clustering Results]")
+            for cluster_id in range(self.num_clusters):
+                cluster_clients = [cid for cid, clust in self.client_assignments.items() 
+                                 if clust == cluster_id]
+                if cluster_clients:
+        
+                   print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
 
-        total_clusters = len(clusters)
+            #visualize 
 
-        if in_warmup_phase or total_clusters == 1:
-            cluster_allocations = {list(clusters.keys())[0]: self.min_fit_clients}
-            print(f"Unified pool allocation: {self.min_fit_clients} clients")
+            # === ADD VISUALIZATION HERE ===
+
+            # ✅ NEW: Visualize clustering PROTOTYPES figure 5
+            if len(all_prototypes_list) >= self.num_clusters:
+              self._visualize_clusters(
+                prototypes=all_prototypes_list,
+                client_ids=all_client_ids,
+                server_round=server_round,
+                true_domain_map=None  # Pass your domain map
+            )
+
+            true_domains = np.array(domains_ids)
+           
+            
         else:
-            base_per_cluster = max(1, self.min_fit_clients // total_clusters)
-            remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
-
-            print(f"Total selection budget: {self.min_fit_clients} clients")
-            print(f"Active clusters: {total_clusters}")
-            print(f"Base per cluster: {base_per_cluster}")
-            print(f"Remaining: {remaining_budget}")
-
-            cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
-
-            if remaining_budget > 0:
-                cluster_sizes = {cluster_id: len(clients) for cluster_id, clients in clusters.items()}
-                total_size = sum(cluster_sizes.values())
-
-                for cluster_id in sorted(clusters.keys(), key=lambda x: cluster_sizes[x], reverse=True):
-                    if remaining_budget <= 0:
-                        break
-                    proportion = cluster_sizes[cluster_id] / total_size if total_size > 0 else 0
-                    extra = min(remaining_budget, max(1, int(remaining_budget * proportion)))
-                    cluster_allocations[cluster_id] += extra
-                    remaining_budget -= extra
-
-            print(f"\nFinal allocations:")
-            for cluster_id, allocation in sorted(cluster_allocations.items()):
-                cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
-                print(f"  Cluster {cluster_id} [{cluster_type}]: {allocation} clients")
-
-        # =================================================================
-        # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER (UUIDs, but log with LIDs)
-        # =================================================================
-        print(f"\n{'─'*80}")
-        print(f"[Client Selection]")
-        print(f"{'─'*80}")
-
-        selected_clients_uuids: List[str] = []
-
+            print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
+            print(f"  Will use unified pool selection")
+            
+      # =================================================================
+      # PHASE 2: ORGANIZE CLIENTS INTO CLUSTERS OR UNIFIED POOL
+      # =================================================================
+    
+      if in_warmup_phase or not self.client_assignments:
+        # STAGE 1: Unified pool (all clients in single cluster)
+        print(f"\n[Client Organization] UNIFIED POOL MODE")
+        clusters[0] = participated_available + never_participated
+        print(f"  Single pool: {len(clusters[0])} clients")
+        
+      else:
+        # STAGE 2: Domain-aware clustering
+        print(f"\n[Client Organization] DOMAIN-AWARE MODE")
+        
+        # Add participated clients to their assigned clusters
+        for cid in participated_available:
+            if cid in self.client_assignments:
+                cluster_id = self.client_assignments[cid]
+                clusters[cluster_id].append(cid)
+            else:
+                # Unassigned clients go to cluster 0
+                clusters[0].append(cid)
+        
+        # Add never-participated clients to virtual cluster
+        if never_participated and self.use_virtual_cluster:
+            clusters[self.virtual_cluster_id] = never_participated
+            print(f"  Virtual Cluster {self.virtual_cluster_id}: {len(never_participated)} new clients")
+        
+        # Display cluster distribution
         for cluster_id in sorted(clusters.keys()):
             cluster_clients = clusters[cluster_id]
-            allocation = cluster_allocations.get(cluster_id, 0)
+            cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+            print(f"  Cluster {cluster_id} [{cluster_type}]: {len(cluster_clients)} clients")
 
-            if allocation == 0:
-                continue
+      print(f"\n[Active Clusters] {len(clusters)} cluster(s)")
 
-            cluster_type = "Unified Pool" if in_warmup_phase else (
-                "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
-            )
+      # =================================================================
+      # PHASE 3: COMPUTE GLOBAL SELECTION SCORES
+      # =================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Score Computation] Round {server_round}")
+      print(f"{'─'*80}")
+    
+      # Get adaptive weights
+      alpha_1, alpha_2 = self._adapt_weights(server_round)
+      print(f"Weights: α₁(reliability)={alpha_1:.2f}, α₂(fairness)={alpha_2:.2f}")
+    
+      # Compute scores for ALL available clients
+      all_scores = {}
+    
+      # Process participated clients (use full methodology)
+      if participated_available:
+        print(f"\n[Participated Clients] Computing reliability + fairness scores...")
+        participated_scores = self.compute_global_selection_scores(
+            participated_available, 
+            server_round
+        )
+        all_scores.update(participated_scores)
+    
+      # Process never-participated clients
+      if never_participated:
+        print(f"\n[New Clients] Assigning initial scores...")
+        for cid in never_participated:
+            reliability = 0.5  # Neutral reliability (no history)
+            fairness = 1.0     # Maximum fairness (never selected)
+            all_scores[cid] = (alpha_1 * reliability) + (alpha_2 * fairness)
+            print(f"  Client {cid}: R={reliability:.3f}, F={fairness:.3f}, Score={all_scores[cid]:.3f}")
 
-            print(f"\n[Cluster {cluster_id} - type: {cluster_type}]")
-
-            cluster_clients_sorted = sorted(
-                cluster_clients,
-                key=lambda uuid: all_scores.get(uuid, 0.0),
-                reverse=True
-            )
-
-            num_to_select = min(allocation, len(cluster_clients_sorted))
-            cluster_selection = cluster_clients_sorted[:num_to_select]
-            selected_clients_uuids.extend(cluster_selection)
-
-            print(f"Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
-
-            for i, uuid in enumerate(cluster_selection[:5]):
-                score = all_scores.get(uuid, 0.0)
-                lid = uuid_to_lid.get(uuid)
-                status = "NEW" if (lid is None or lid not in self.participated_clients) else "participated"
-                lid_str = f"lid={lid}" if lid is not None else "lid=UNK"
-                lid_sel = self.selection_counts.get(lid, 0) if lid is not None else 0
-                print(f"    {i+1}. {uuid:20s} [{status:12s}] {lid_str} Score={score:.4f}, Selected={lid_sel}x")
-
-        # =================================================================
-        # PHASE 6: PREPARE INSTRUCTIONS (UUIDs) + update selection_counts (LIDs)
-        # =================================================================
-        selected_clients_uuids = selected_clients_uuids[:self.min_fit_clients]
-        # Which logical clients are allowed to be stragglers?
-        STRAGGLER_LIDS = {0, 3, 5, 7, 10, 12}
-        NUM_STRAGGLERS_PER_ROUND = 3
-        instructions: List[Tuple[ClientProxy, FitIns]] = []
-        # 1) choose which logical ids will be stragglers this round
-        eligible_lids = [lid for lid in STRAGGLER_LIDS if lid in uuid_to_lid.values()]
+      # =================================================================
+      # PHASE 4: DISTRIBUTE SELECTION BUDGET ACROSS CLUSTERS
+      # =================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Selection Distribution]")
+      print(f"{'─'*80}")
+    
+      if not clusters:
+        print("No clusters available")
+        return []
+    
+      total_clusters = len(clusters)
+    
+      # Calculate base allocation
+      if in_warmup_phase or total_clusters == 1:
+        # Warmup or single cluster: allocate all budget to the pool
+        cluster_allocations = {list(clusters.keys())[0]: self.min_fit_clients}
+        print(f"Unified pool allocation: {self.min_fit_clients} clients")
+      else:
+        # Domain-aware: distribute across clusters
+        base_per_cluster = max(1, self.min_fit_clients // total_clusters)
+        remaining_budget = self.min_fit_clients - (base_per_cluster * total_clusters)
+       
+        #cc
+        print(f"Total selection budget: {self.min_fit_clients} clients")
+        print(f"Active clusters: {total_clusters}")
+        print(f"Base per cluster: {base_per_cluster}")
+        print(f"Remaining: {remaining_budget}")
         
-        # Convert string LIDs to integers and filter
-        eligible_lids = []
-        for lid_str in uuid_to_lid.values():
-          try:
-              lid_int = int(lid_str)  # '0' -> 0, '3' -> 3
-              if lid_int in STRAGGLER_LIDS:
-                  eligible_lids.append(lid_int)
-          except ValueError:
+        # Allocate base quota
+        cluster_allocations = {cluster_id: base_per_cluster for cluster_id in clusters}
+        
+        # Distribute remaining proportionally by cluster size
+        if remaining_budget > 0:
+            cluster_sizes = {cluster_id: len(clients) for cluster_id, clients in clusters.items()}
+            total_size = sum(cluster_sizes.values())
+            
+            for cluster_id in sorted(clusters.keys(), key=lambda x: cluster_sizes[x], reverse=True):
+                if remaining_budget <= 0:
+                    break
+                proportion = cluster_sizes[cluster_id] / total_size if total_size > 0 else 0
+                extra = min(remaining_budget, max(1, int(remaining_budget * proportion)))
+                cluster_allocations[cluster_id] += extra
+                remaining_budget -= extra
+        
+        print(f"\nFinal allocations:")
+        for cluster_id, allocation in sorted(cluster_allocations.items()):
+            cluster_type = "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+            print(f"  Cluster {cluster_id} [{cluster_type}]: {allocation} clients")
+
+      # =================================================================
+      # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER
+      # =================================================================
+      print(f"\n{'─'*80}")
+      print(f"[Client Selection]")
+      print(f"{'─'*80}")
+    
+      selected_clients_cids = []
+    
+      for cluster_id in sorted(clusters.keys()):
+        cluster_clients = clusters[cluster_id]
+        print(f'clusters ====== {cluster_clients}====')
+        allocation = cluster_allocations.get(cluster_id, 0)
+        
+        if allocation == 0:
             continue
-        num_to_pick = min(NUM_STRAGGLERS_PER_ROUND, len(eligible_lids))
-        round_straggler_lids = set(random.sample(eligible_lids, num_to_pick))
+        
+        cluster_type = "Unified Pool" if in_warmup_phase else (
+            "Virtual" if cluster_id == self.virtual_cluster_id else "Domain"
+        )
+        
+        print(f"\n[Cluster {cluster_id} - type de cluster : {cluster_type}]")
+        
+        # Sort by global score (descending)
+        cluster_clients_sorted = sorted(
+            cluster_clients,
+            key=lambda cid: all_scores.get(cid, 0.0),
+            reverse=True
+        )
+        
+        # Select top-k clients
+        num_to_select = min(allocation, len(cluster_clients_sorted))
+        cluster_selection = cluster_clients_sorted[:num_to_select]
+        selected_clients_cids.extend(cluster_selection)
+        
+        print(f"Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
+        
+        # Show detailed scores for top selections
+        for i, cid in enumerate(cluster_selection[:5]):
+            score = all_scores.get(cid, 0.0)
+            status = "NEW" if cid not in self.participated_clients else "participated"
+            selections = self.selection_counts.get(cid, 0)
+            print(f"    {i+1}. {cid:20s} [{status:12s}] Score={score:.4f}, Selected={selections}x")
 
-        print(f"[Round {effective_round}] chosen straggler LIDs:{uuid_to_lid.values()} and {round_straggler_lids}")
-
-        self.round_gt_stragglers[effective_round] = set(round_straggler_lids)
-
-        for uuid in selected_clients_uuids:
-          if uuid in all_clients:
-            client_proxy = all_clients[uuid]
-
-            lid = uuid_to_lid.get(uuid)   # logical id (int)
-            is_straggler = lid in round_straggler_lids
-
-            print(f'client {lid} is straggler : {is_straggler}')
-
+      # =================================================================
+      # PHASE 6: PREPARE INSTRUCTIONS
+      # =================================================================
+      selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
+     
+      instructions = []
+     
+    
+      for client_id in selected_clients_cids:
+        if client_id in all_clients:
+            client_proxy = all_clients[client_id]
             client_config = {
-            "server_round": effective_round,
-            "simulate_delay": is_straggler ,
-            "delay_base_sec": 20.0,
-            "delay_jitter_sec": 3.0,
-            "delay_prob": 1.0,
-        }
+                "server_round":   effective_round,
+       "simulate_stragglers": "0,1,2",   # or ",".join(str(i) for i in range(2))
+     "delay_base_sec": 20.0,     # << increase base delay
+    "delay_jitter_sec": 3.0,    # small randomness
+    "delay_prob": 1.0,    
 
+            }
+            
             instructions.append((client_proxy, FitIns(parameters, client_config)))
+            
+            # Update selection counts
+            self.selection_counts[client_id] = self.selection_counts.get(client_id, 0) + 1
+      
+      # =================================================================
+      # FINAL SUMMARY
+      # =================================================================
+      print(f"\n{'='*80}")
+      print(f"[Round {server_round}] SELECTION SUMMARY")
+      print(f"{'='*80}")
+    
+      stage_name = "WARMUP" if in_warmup_phase else "DOMAIN-AWARE"
+      print(f"Stage: {stage_name}")
+      print(f"Total selected: {len(instructions)} clients")
+    
+      if not in_warmup_phase:
+        regular_selected = sum(1 for cid in selected_clients_cids 
+                              if cid in self.participated_clients)
+        new_selected = sum(1 for cid in selected_clients_cids 
+                          if cid not in self.participated_clients)
+        
+        print(f"  From domain clusters: {regular_selected} clients")
+        print(f"  From virtual cluster: {new_selected} clients")
+    
+      print(f"\nSelection frequency (top 10):")
+      top_selected = sorted(self.selection_counts.items(), 
+                         key=lambda x: x[1], 
+                         reverse=True)[:10]
+      for cid, count in top_selected:
+        print(f"  {cid:20s}: {count}x")
+    
+      print(f"{'='*80}\n")
 
-            if lid is not None:
-                self.selection_counts[lid] = self.selection_counts.get(lid, 0) + 1
+    
 
-        print(f"\n{'='*80}")
-        print(f"[Round {server_round}] SELECTION SUMMARY")
-        print(f"{'='*80}")
+      return instructions
 
-        stage_name = "WARMUP" if in_warmup_phase else "DOMAIN-AWARE"
-        print(f"Stage: {stage_name}")
-        print(f"Total selected: {len(instructions)} clients")
-
-        print(f"\nSelection frequency (top 10) [by logical id]:")
-        top_selected = sorted(self.selection_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-        for lid, count in top_selected:
-            print(f"  lid {lid:8s}: {count}x")
-
-        print(f"{'='*80}\n")
-
-        return instructions
    
     def _compute_proto_score_from_dict(self, prototypes: dict) -> float:
      """
@@ -2069,7 +1770,6 @@ class GPAFStrategy(FedAvg):
      
       # Return client-EvaluateIns pairs
       return [(client, evaluate_ins) for client in clients]   
-    
     def evaluate(
         self, server_round: int, parameters: Parameters
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
