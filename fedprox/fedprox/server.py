@@ -160,7 +160,6 @@ class GPAFStrategy(FedAvg):
        
         self.total_rounds=total_rounds
         method_name="CDCSF"
-
         # Store ground truth straggler labels
         self.ground_truth_stragglers = ground_truth_stragglers  # Set of client IDs
         
@@ -406,6 +405,41 @@ class GPAFStrategy(FedAvg):
                 w.writeheader()
             w.writerows(rows)
 
+
+    @staticmethod
+    def parse_logical_id(lid_any) -> int:
+        """
+        Parse any logical ID format to integer.
+        
+        Handles:
+        - "client_0" -> 0
+        - "0" -> 0
+        - 0 -> 0
+        - None -> raises ValueError
+        """
+        if lid_any is None:
+            raise ValueError("Logical ID is None")
+        
+        lid_str = str(lid_any)
+        
+        # Remove "client_" prefix if present
+        if lid_str.startswith("client_"):
+            lid_str = lid_str.replace("client_", "")
+        
+        try:
+            return int(lid_str)
+        except ValueError:
+            raise ValueError(f"Cannot parse logical ID: {lid_any}")
+    
+    @staticmethod
+    def format_logical_id(lid_int: int) -> str:
+        """
+        Format integer ID to standard string format.
+        
+        0 -> "client_0"
+        """
+        return f"client_{lid_int}"
+
     def aggregate_fit(
         self,
         server_round: int,
@@ -599,17 +633,7 @@ class GPAFStrategy(FedAvg):
         except Exception as e:
             print(f"  [ProtoLog] client_proxy.cid={client_proxy.cid}: get_properties failed: {e}")
 
-    def _predict_stragglers_from_score(self, T_max, client_ids):
-      """Return set of predicted stragglers using s_c = 1 - As."""
-      scores = {}
-      for cid in client_ids:
-        T_c = self.training_times.get(cid, 0.0)
-        As = T_max / (T_c + self.beta * T_max) if (T_c > 0 and T_max > 0) else 0.0
-        s_c = 1.0 - As
-        scores[cid] = s_c
-
-      predicted = {cid for cid, s in scores.items() if s >= self.theta}
-      return predicted, scores
+    
 
     def save_client_mapping(self):
 
@@ -632,68 +656,172 @@ class GPAFStrategy(FedAvg):
       s = str(label).strip()
       return s.replace("client_", "")   # "client_0" -> "0"
 
-    def _validate_straggler_predictions(self, server_round, results):
-      """Validate straggler predictions using logical ids and per-round ground truth."""
-      participants, round_dur = [], {}
-
-      for client_proxy, fit_res in results:
-        metrics = fit_res.metrics or {}
-
-        logical_id = (
-            metrics.get("client_cid")
-            or metrics.get("logical_id")
-            or metrics.get("simulation_index")
-        )
-        if logical_id is None:
-            continue
-
-        lid_str = str(logical_id)
-        participants.append(lid_str)
-
-        if "duration" in metrics:
-            round_dur[lid_str] = float(metrics["duration"])
-
-      # compute T_max from EMAs (assume you already updated EMA this round)
-      valid_times = [t for t in self.training_times.values() if t is not None]
-      if not valid_times:
-        return
-
-      T_max = float(np.mean(valid_times))
-
-      # predict using logical ids (keys are the same string lids as in participants)
-      predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
-
-      gt_lid_set = self.round_gt_stragglers.get(server_round, set())
-
-      for lid_str in participants:
-        # try to convert "client_3" or "3" -> 3
-        logical_idx = None
-        try:
-            if lid_str.startswith("client_"):
-                logical_idx = int(lid_str.split("_", 1)[1])
+    def _predict_stragglers_from_score(
+        self, 
+        T_max: float, 
+        client_ids: List[int]  # CHANGED: Now expects integer IDs
+    ) -> Tuple[Set[int], Dict[int, float]]:
+        """
+        Predict stragglers using reliability score s_c = 1 - As.
+        
+        Args:
+            T_max: Maximum training time threshold
+            client_ids: List of INTEGER logical IDs
+        
+        Returns:
+            (predicted_stragglers, scores) - both use integer IDs
+        """
+        scores = {}
+        
+        for cid_int in client_ids:
+            T_c = self.training_times.get(cid_int, 0.0)
+            
+            if T_c > 0 and T_max > 0:
+                As = T_max / (T_c + self.beta * T_max)
             else:
-                logical_idx = int(lid_str)
-        except Exception:
-            logical_idx = None
-
-        # ground truth: was this logical index designated as straggler this round?
-        is_gt = (logical_idx is not None) and (logical_idx in gt_lid_set)
-        print(f' === straggling ======')
-        rec = {
-            "round": server_round,
-            "client_id": lid_str,  # logical id as string
-            "logical_id": logical_idx,
-            "T_c": self.training_times.get(lid_str, float("nan")),
-            "T_max": T_max,
-            "s_c": scores.get(lid_str, float("nan")),
-            "actual_duration": round_dur.get(lid_str, float("nan")),
-            "predicted_straggler": lid_str in predicted_set,
-            "ground_truth_straggler": is_gt,
-        }
-        rec["prediction_type"] = self._classify_prediction(
-            rec["predicted_straggler"], rec["ground_truth_straggler"]
-        )
-        self.validation_history.append(rec)
+                As = 0.0
+            
+            s_c = 1.0 - As  # Straggler score (higher = more likely straggler)
+            scores[cid_int] = s_c
+        
+        # Predict stragglers (score >= threshold)
+        predicted = {cid for cid, s in scores.items() if s >= self.theta}
+        
+        return predicted, scores
+    
+    # ========================================================================
+    # VALIDATION
+    # ========================================================================
+    
+    def _validate_straggler_predictions(self, server_round: int, results):
+        """
+        Validate straggler predictions using INTEGER logical IDs.
+        """
+        print(f"\n{'='*80}")
+        print(f"[STRAGGLER VALIDATION] Round {server_round}")
+        print(f"{'='*80}")
+        
+        # Collect participants and durations (use INTEGER IDs)
+        participants: List[int] = []
+        round_durations: Dict[int, float] = {}
+        
+        for client_proxy, fit_res in results:
+            metrics = fit_res.metrics or {}
+            
+            lid_raw = (
+                metrics.get("logical_id") or 
+                metrics.get("client_cid") or 
+                metrics.get("simulation_index")
+            )
+            
+            try:
+                lid_int = self.parse_logical_id(lid_raw)
+            except ValueError:
+                continue
+            
+            participants.append(lid_int)
+            
+            if "duration" in metrics:
+                round_durations[lid_int] = float(metrics["duration"])
+        
+        if not participants:
+            print("  ⚠ No participants to validate")
+            return
+        
+        # Compute T_max from EMAs
+        valid_times = [t for t in self.training_times.values() if t is not None and t > 0]
+        if not valid_times:
+            print("  ⚠ No valid training times")
+            return
+        
+        T_max = float(np.mean(valid_times))
+        
+        # Predict stragglers (now uses integer IDs)
+        predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
+        
+        # Get ground truth for this round (integer IDs)
+        gt_straggler_set = self.round_gt_stragglers.get(server_round, set())
+        
+        print(f"\n  Ground truth stragglers: {gt_straggler_set}")
+        print(f"  Predicted stragglers: {predicted_set}")
+        print(f"  T_max (EMA mean): {T_max:.2f}s")
+        
+        # Validation metrics
+        tp = fp = tn = fn = 0
+        
+        print(f"\n  Per-Client Validation:")
+        print(f"  {'Client':<12} {'Duration':<10} {'EMA':<10} {'Score':<8} {'Pred':<6} {'GT':<6} {'Result':<10}")
+        print(f"  {'-'*80}")
+        
+        for lid_int in participants:
+            T_c = self.training_times.get(lid_int, float('nan'))
+            s_c = scores.get(lid_int, float('nan'))
+            actual_dur = round_durations.get(lid_int, float('nan'))
+            
+            is_predicted = lid_int in predicted_set
+            is_gt = lid_int in gt_straggler_set
+            
+            # Classify prediction
+            if is_predicted and is_gt:
+                result = "TP"
+                tp += 1
+            elif is_predicted and not is_gt:
+                result = "FP"
+                fp += 1
+            elif not is_predicted and is_gt:
+                result = "FN"
+                fn += 1
+            else:
+                result = "TN"
+                tn += 1
+            
+            pred_str = "YES" if is_predicted else "NO"
+            gt_str = "YES" if is_gt else "NO"
+            
+            print(f"  {self.format_logical_id(lid_int):<12} "
+                  f"{actual_dur:<10.2f} {T_c:<10.2f} {s_c:<8.3f} "
+                  f"{pred_str:<6} {gt_str:<6} {result:<10}")
+            
+            # Store validation record
+            rec = {
+                "round": server_round,
+                "client_id": lid_int,  # Store as integer
+                "T_c": T_c,
+                "T_max": T_max,
+                "s_c": s_c,
+                "actual_duration": actual_dur,
+                "predicted_straggler": is_predicted,
+                "ground_truth_straggler": is_gt,
+                "prediction_type": result
+            }
+            self.validation_history.append(rec)
+        
+        # Summary statistics
+        total = tp + fp + tn + fn
+        accuracy = (tp + tn) / total if total > 0 else 0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        print(f"\n  Validation Metrics:")
+        print(f"    TP: {tp}, FP: {fp}, TN: {tn}, FN: {fn}")
+        print(f"    Accuracy:  {accuracy:.3f}")
+        print(f"    Precision: {precision:.3f}")
+        print(f"    Recall:    {recall:.3f}")
+        print(f"    F1-Score:  {f1:.3f}")
+        print(f"{'='*80}\n")
+    
+    @staticmethod
+    def _classify_prediction(predicted: bool, ground_truth: bool) -> str:
+        """Classify prediction type."""
+        if predicted and ground_truth:
+            return "TP"
+        elif predicted and not ground_truth:
+            return "FP"
+        elif not predicted and ground_truth:
+            return "FN"
+        else:
+            return "TN"
 
     def _observe_mapping(self, results):
       "Capture mappings from Flower UUID to your logical id when available."
@@ -1610,13 +1738,10 @@ class GPAFStrategy(FedAvg):
         # PHASE 6: PREPARE INSTRUCTIONS (UUIDs) + update selection_counts (LIDs)
         # =================================================================
         selected_clients_uuids = selected_clients_uuids[:self.min_fit_clients]
-
         # Which logical clients are allowed to be stragglers?
         STRAGGLER_LIDS = {0, 3, 5, 7, 10, 12}
         NUM_STRAGGLERS_PER_ROUND = 3
-
         instructions: List[Tuple[ClientProxy, FitIns]] = []
-
         # 1) choose which logical ids will be stragglers this round
         eligible_lids = [lid for lid in STRAGGLER_LIDS if lid in uuid_to_lid.values()]
         num_to_pick = min(NUM_STRAGGLERS_PER_ROUND, len(eligible_lids))
