@@ -1766,6 +1766,8 @@ class GPAFStrategy(FedAvg):
             lid = uuid_to_lid.get(uuid)   # logical id (int)
             is_straggler = lid in round_straggler_lids
 
+            print(f'client {lid} is straggler : {is_straggler}')
+
             client_config = {
             "server_round": effective_round,
             "simulate_delay": is_straggler ,
