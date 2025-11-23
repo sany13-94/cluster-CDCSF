@@ -660,7 +660,7 @@ class GPAFStrategy(FedAvg):
         self, 
         T_max: float, 
         client_ids: List[int]  # CHANGED: Now expects integer IDs
-    ) -> Tuple[Set[int], Dict[int, float]]:
+    ):
         """
         Predict stragglers using reliability score s_c = 1 - As.
         
@@ -1134,8 +1134,6 @@ class GPAFStrategy(FedAvg):
         alpha_1, alpha_2 = 0.3, 0.7  # Ensure fair participation
     
       return alpha_1, alpha_2
-
-    
     
     def select_clients_from_cluster(
         self,
