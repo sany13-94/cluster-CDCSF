@@ -373,6 +373,7 @@ def get_server_fn(mlflow=None):
       print(f'strategy of method {strategy}')
       # Define stragglers
       ground_truth_stragglers = {f'client_{i}' for i in range(3)}
+      print(f'straglers : {ground_truth_stragglers}')
       strategyi = server.GPAFStrategy(
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
