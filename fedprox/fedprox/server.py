@@ -868,26 +868,20 @@ class GPAFStrategy(FedAvg):
     
     
     def _adapt_weights(self, server_round: int) -> Tuple[float, float]:
-        
-        print(f'ss {server_round} and ee {self.total_rounds}')
-        progress = server_round / self.total_rounds
-        
-        if progress < 0.4 :
-          # Early phase (0-20%): Prioritize reliability for stable initial model
-          alpha_1, alpha_2 = 0.8, 0.2
-
-        elif progress < 0.8:
-            # Middle phase (20-80%): Balanced approach
-            alpha_1, alpha_2 = 0.8, 0.2
-        
+      progress = server_round / self.total_rounds
+    
+      if progress < 0.1:        # First 10%: EXPLORATION
+        alpha_1, alpha_2 = 0.3, 0.7  # Prioritize FAIRNESS to discover clients
+      elif progress < 0.4:      # 10-40%: TRANSITION
+        alpha_1, alpha_2 = 0.6, 0.4  # Balanced
+      elif progress < 0.8:      # 40-80%: EXPLOITATION
+        alpha_1, alpha_2 = 0.8, 0.2  # Prioritize RELIABILITY
+      else:                     # Final 20%: FAIRNESS
+        alpha_1, alpha_2 = 0.3, 0.7  # Ensure fair participation
    
-        else:
-            # Late phase (80-100%): Prioritize fairness for comprehensive coverage
-            alpha_1, alpha_2 = 0.3, 0.7
        
        
-       
-        return alpha_1, alpha_2
+      return alpha_1, alpha_2
     
     
     def select_clients_from_cluster(

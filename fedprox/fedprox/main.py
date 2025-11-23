@@ -333,7 +333,7 @@ def get_server_fn(mlflow=None):
     initial_parameters = None
 
     # 1) Directory where previous version outputs are mounted (read-only)
-    prev_ckpt_dir = "/kaggle/input/checkpoints9"
+    prev_ckpt_dir = "/kaggle/input/checkpoints4"
 
     # 2) Directory where this run will write new checkpoints
     curr_ckpt_dir = "/kaggle/working/cluster-CDCSF/fedprox/checkpoints"
@@ -349,7 +349,7 @@ def get_server_fn(mlflow=None):
 
     if ckpt is not None:
             initial_parameters = ckpt["parameters"]
-            #base_round = ckpt["server_round"]   # e.g., 4
+            base_round = ckpt["server_round"]   # e.g., 4
             print(f"[Resume] Resuming from global round {base_round}")
 
     # Number of rounds to run in THIS process
@@ -382,11 +382,10 @@ def get_server_fn(mlflow=None):
         min_available_clients=6,
          ground_truth_stragglers=ground_truth_stragglers,
      total_rounds=global_total_rounds,
-   
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=global_total_rounds)
+    config = ServerConfig(num_rounds=remaining_rounds)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
@@ -477,6 +476,7 @@ def main(cfg: DictConfig) -> None:
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
 
     per_round_df = pd.read_csv("validation_results.csv")
+    final_df = pd.read_csv("client_participation.csv")
     visualizer = ClusterVisualizationForConfigureFit()    
     print("[1/3] Generating straggler detection analysis...")
     visualizer.analyze_straggler_detection_with_ground_truth(
