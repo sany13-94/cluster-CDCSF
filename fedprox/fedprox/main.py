@@ -383,16 +383,10 @@ def get_server_fn(mlflow=None):
          ground_truth_stragglers=ground_truth_stragglers,
      total_rounds=global_total_rounds,
    
-  initial_parameters=initial_parameters,  # <-- use checkpoint
-  save_dir=curr_ckpt_dir,   
-    save_every=1,
-    base_round=base_round,                       # <--- NEW
-    meta_state=ckpt["meta_state"] if ckpt else None,  # <--- NEW
-   
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=remaining_rounds)
+    config = ServerConfig(num_rounds=global_total_rounds)
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
