@@ -1742,6 +1742,16 @@ class GPAFStrategy(FedAvg):
         instructions: List[Tuple[ClientProxy, FitIns]] = []
         # 1) choose which logical ids will be stragglers this round
         eligible_lids = [lid for lid in STRAGGLER_LIDS if lid in uuid_to_lid.values()]
+        
+        # Convert string LIDs to integers and filter
+        eligible_lids = []
+        for lid_str in uuid_to_lid.values():
+          try:
+              lid_int = int(lid_str)  # '0' -> 0, '3' -> 3
+              if lid_int in STRAGGLER_LIDS:
+                  eligible_lids.append(lid_int)
+          except ValueError:
+            continue
         num_to_pick = min(NUM_STRAGGLERS_PER_ROUND, len(eligible_lids))
         round_straggler_lids = set(random.sample(eligible_lids, num_to_pick))
 
