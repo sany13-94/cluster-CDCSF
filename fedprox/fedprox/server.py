@@ -1787,7 +1787,6 @@ class GPAFStrategy(FedAvg):
      
       # Return client-EvaluateIns pairs
       return [(client, evaluate_ins) for client in clients]   
-      
     def evaluate(
         self, server_round: int, parameters: Parameters
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
