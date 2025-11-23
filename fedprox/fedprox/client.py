@@ -148,7 +148,9 @@ class FederatedClient(fl.client.NumPyClient):
         try: 
             import random
             round_number = config.get("server_round", -1)
-            simulate_delay = False
+            is_straggler = config.get("is_straggler", False)  # ← Simple check
+
+            simulate_delay = is_straggler 
             uuid=self.client_id
             print(f"Client {self.client_id} starting fit() for round {round_number}")
             uuid = str(self.client_id)  # force to string
@@ -199,81 +201,9 @@ class FederatedClient(fl.client.NumPyClient):
             import traceback
             traceback.print_exc()
             raise e
-    '''
-    def get_properties(self, config):
-        """Send prototypes to server when requested (NumPyClient interface)."""
-        
-        print(f"Client {self.client_id} - get_properties called")
-      
-        req = config.get("request", None)
-        if req == "identity":
-            lid = str(self.client_id)
-            return {
-                "logical_id": lid,
-                "client_cid": lid,
-            }
-       
-        
-        if config and config.get("request") == "prototypes":
-            print(f"Client {self.client_id} - Server requesting prototypes")
-            
-            # Always try to load from disk first
-            if not (hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None):
-                print(f"Client {self.client_id} - Loading prototypes from disk...")
-                self._load_prototypes_from_disk()
-            
-            # Check if we have prototypes
-            has_prototypes = hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None
-            has_class_counts = hasattr(self, 'class_counts_from_last_round') and self.class_counts_from_last_round is not None
-            
-            print(f"Client {self.client_id} - prototype file exists: {self.prototype_file.exists()}")
-            
-            if has_prototypes and has_class_counts:
-                try:
-                    print(f"Client {self.client_id} - Encoding prototypes...")
-                    
-                    prototypes_bytes = pickle.dumps(self.prototypes_from_last_round)
-                    class_counts_bytes = pickle.dumps(self.class_counts_from_last_round)
-                    
-                    prototypes_encoded = base64.b64encode(prototypes_bytes).decode('utf-8')
-                    class_counts_encoded = base64.b64encode(class_counts_bytes).decode('utf-8')
-                    
-                    print(f"Client {self.client_id} - Successfully encoded prototypes ({len(prototypes_bytes)} bytes)")
-                    node_id = self.context.node_id
-                    return {
-                      #"domain_id": str(self.traindata.dataset.domain_id),
-                        "prototypes": prototypes_encoded,
-                        "class_counts": class_counts_encoded,
-                                    "client_cid": self.client_id,           # your logical ID
-            "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
-
-                    }
-                    
-                except Exception as e:
-                    print(f"ERROR: Client {self.client_id} - Encoding error: {e}")
-                    import traceback
-                    traceback.print_exc()
-            
-            # No prototypes available
-            print(f"Client {self.client_id} - No prototypes available")
-            return {"domain_id": str(self.traindata.dataset.domain_id)}
-        
-        # Default response
-        return {
-          "domain_id": str(self.traindata.dataset.domain_id),
-          "simulation_index": str(self.client_id)}
-
-    '''
-    
 
     def get_properties(self, config: Dict[str, Scalar]) -> Dict[str, Scalar]:
-        """Return simple dict for NumPyClient; Flower will wrap into GetPropertiesRes.
-
-        Supported requests:
-        - {"request": "identity"}   -> used by _refresh_uuid_mapping
-        - {"request": "prototypes"} -> used by your clustering logic
-        - anything else             -> cheap default
-        """
+       
         req = (config or {}).get("request", None)
         print(f"Client {self.client_id} - get_properties called with request={req}")
 

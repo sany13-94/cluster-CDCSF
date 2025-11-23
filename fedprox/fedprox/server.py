@@ -1758,7 +1758,7 @@ class GPAFStrategy(FedAvg):
 
             client_config = {
             "server_round": effective_round,
-            "simulate_delay": 1 if is_straggler else 0,
+            "simulate_delay": is_straggler ,
             "delay_base_sec": 20.0,
             "delay_jitter_sec": 3.0,
             "delay_prob": 1.0,
