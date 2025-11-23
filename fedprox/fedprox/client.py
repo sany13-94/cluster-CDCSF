@@ -148,7 +148,7 @@ class FederatedClient(fl.client.NumPyClient):
         try: 
             import random
             round_number = config.get("server_round", -1)
-            is_straggler = config.get("is_straggler", False)  # ← Simple check
+            is_straggler = config.get("simulate_delay", False)  # ← Simple check
 
             simulate_delay = is_straggler 
             uuid=self.client_id
