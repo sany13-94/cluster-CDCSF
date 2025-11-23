@@ -1745,7 +1745,7 @@ class GPAFStrategy(FedAvg):
         num_to_pick = min(NUM_STRAGGLERS_PER_ROUND, len(eligible_lids))
         round_straggler_lids = set(random.sample(eligible_lids, num_to_pick))
 
-        print(f"[Round {effective_round}] chosen straggler LIDs: {round_straggler_lids}")
+        print(f"[Round {effective_round}] chosen straggler LIDs:{uuid_to_lid} and {round_straggler_lids}")
 
         self.round_gt_stragglers[effective_round] = set(round_straggler_lids)
 
