@@ -54,7 +54,10 @@ class FederatedClient(fl.client.NumPyClient):
     def __init__(self, net: ModelCDCSF, 
      data,validset,
      local_epochs,
-     client_id,  
+     client_id,
+      mlflow,
+      run_id,
+      
             device,
             context=None):
         self.net = net
@@ -71,8 +74,10 @@ class FederatedClient(fl.client.NumPyClient):
         # Move models to device
         self.net.to(self.device)
         
+        self. mlflow= mlflow
         # Initialize optimizers
         self.optimizer= torch.optim.Adam(self.net.parameters())
+        self.run_id=run_id
         # Initialize dictionaries to store features and labels
         self.client_features = {}  # Add this
         self.client_labels = {}    # Add this
@@ -83,45 +88,28 @@ class FederatedClient(fl.client.NumPyClient):
         self.prototype_file = self.prototype_dir / f"client_{self.client_id}_prototypes.pkl"
         self.counts_file = self.prototype_dir / f"client_{self.client_id}_counts.pkl"
         
-
-
-        BASE_DIR = Path("/kaggle/working/cluster-CDCSF/fedprox")
-        self.prototype_dir = BASE_DIR / "prototype_cache"
-        self.prototype_dir.mkdir(parents=True, exist_ok=True)
-        self.prototype_file = self.prototype_dir / f"client_{self.client_id}_prototypes.pkl"
-        self.counts_file = self.prototype_dir / f"client_{self.client_id}_counts.pkl"
-
-
         # Initialize prototype storage
         self.prototypes_from_last_round = None
         self.class_counts_from_last_round = None
         
         # Load existing prototypes if available
         self._load_prototypes_from_disk()
+        self.CKPT_DIR = "/kaggle/working/cluster-CDCSF/fedprox/ckpts"
 
         # Optional: if you added your previous run's "Notebook Output" via Add Data,
         # set this path to that dataset so we can resume across versions automatically.
         # Example: "/kaggle/input/your-notebook-name/ckpts"
         self.PERSIST_INPUT = os.environ.get("KAGGLE_PERSIST_INPUT", "").strip()  # or hardcode the path
-        
+        self.SAVE_EVERY_STEPS  = 2000   # checkpoint cadence (increase if IO is heavy)
+        self.KEEP_LAST         = 3      # keep only last N checkpoints
+        self.PRINT_EVERY_STEPS = 100
+        os.makedirs(self.CKPT_DIR, exist_ok=True)
         
     def set_parameters(self, parameters):
         """Set model parameters from a list of NumPy arrays."""
         params_dict = zip(self.net.state_dict().keys(), parameters)
         state_dict = {k: torch.tensor(v) for k, v in params_dict}
-        
-        try:
-
-          self.net.load_state_dict(state_dict, strict=True)
-
-        except Exception as e:
-          print("❌ Parameter loading FAILED")
-          print("Model keys:", list(self.net.state_dict().keys()))
-          print("Checkpoint keys:", list(state_dict.keys()))
-          print("Shape mismatch error:", e)
-          raise e
-
-   
+        self.net.load_state_dict(state_dict, strict=True)
 
     def get_parameters(self, config=None):
       return [val.cpu().numpy() for _, val in self.net.state_dict().items()]
@@ -143,19 +131,24 @@ class FederatedClient(fl.client.NumPyClient):
         "cid": self.client_id  # ✅ send local client id to server
 
         }
+
+   #viusalize client pixels intensities to visualize the domain shift
+    # =======================================================
+    # NOUVELLES FONCTIONS DE VISUALISATION DE DISTRIBUTION
+    # =======================================================
+
+    
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
         try: 
             import random
             round_number = config.get("server_round", -1)
-            is_straggler = config.get("simulate_delay", False)  # ← Simple check
-
-            simulate_delay = is_straggler 
+            simulate_delay = False
             uuid=self.client_id
             print(f"Client {self.client_id} starting fit() for round {round_number}")
             uuid = str(self.client_id)  # force to string
             simulate_ids = {str(s).strip() for s in (config.get("simulate_stragglers") or "").split(",") if s}
-            #simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
+            simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
 
             print(f"Client simulate_ids: {simulate_ids}tttt starting fit() for round {round_number}")
 
@@ -195,81 +188,71 @@ class FederatedClient(fl.client.NumPyClient):
                 "logical_id": f"client_{self.client_id}",  # ensures "client_0"
 
             })
-      
+           
+          
+            #return self.get_parameters(self.net), len(self.traindata), {}
+
+           
         except Exception as e:
             print(f"ERROR: Client {self.client_id} FAILURE during fit round {round_number}: {e}")
             import traceback
             traceback.print_exc()
             raise e
-
-    def get_properties(self, config: Dict[str, Scalar]) -> Dict[str, Scalar]:
-       
-        req = (config or {}).get("request", None)
-        print(f"Client {self.client_id} - get_properties called with request={req}")
-
-        # ------------------------------------------------------------------
-        # 1) IDENTITY REQUEST (used by _refresh_uuid_mapping)
-        # ------------------------------------------------------------------
-        if req == "identity":
-            # MUST be super cheap and MUST NOT fail
-            lid = str(self.client_id)
-            return {
-                "logical_id": lid,
-                "client_cid": lid,
-                "simulation_index": lid,
-            }
-
-        # ------------------------------------------------------------------
-        # 2) PROTOTYPES REQUEST (used by your clustering stage)
-        # ------------------------------------------------------------------
-        if req == "prototypes":
+   
+    def get_properties(self, config):
+        """Send prototypes to server when requested (NumPyClient interface)."""
+        
+        print(f"Client {self.client_id} - get_properties called")
+        
+        if config and config.get("request") == "prototypes":
             print(f"Client {self.client_id} - Server requesting prototypes")
-
-            # Only touch disk when prototypes are actually requested
-            if self.prototypes_from_last_round is None or self.class_counts_from_last_round is None:
-                # Try loading from disk
+            
+            # Always try to load from disk first
+            if not (hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None):
+                print(f"Client {self.client_id} - Loading prototypes from disk...")
                 self._load_prototypes_from_disk()
-
-            has_protos = self.prototypes_from_last_round is not None
-            has_counts = self.class_counts_from_last_round is not None
-
-            print(
-                f"Client {self.client_id} - prototype file exists: "
-                f"{self.prototype_file.exists()}, counts file exists: {self.counts_file.exists()}"
-            )
-
-            if has_protos and has_counts:
+            
+            # Check if we have prototypes
+            has_prototypes = hasattr(self, 'prototypes_from_last_round') and self.prototypes_from_last_round is not None
+            has_class_counts = hasattr(self, 'class_counts_from_last_round') and self.class_counts_from_last_round is not None
+            
+            print(f"Client {self.client_id} - has_prototypes: {has_prototypes}")
+            print(f"Client {self.client_id} - prototype file exists: {self.prototype_file.exists()}")
+            
+            if has_prototypes and has_class_counts:
                 try:
+                    print(f"Client {self.client_id} - Encoding prototypes...")
+                    
                     prototypes_bytes = pickle.dumps(self.prototypes_from_last_round)
                     class_counts_bytes = pickle.dumps(self.class_counts_from_last_round)
-
-                    prototypes_b64 = base64.b64encode(prototypes_bytes).decode("utf-8")
-                    class_counts_b64 = base64.b64encode(class_counts_bytes).decode("utf-8")
-
+                    
+                    prototypes_encoded = base64.b64encode(prototypes_bytes).decode('utf-8')
+                    class_counts_encoded = base64.b64encode(class_counts_bytes).decode('utf-8')
+                    
+                    print(f"Client {self.client_id} - Successfully encoded prototypes ({len(prototypes_bytes)} bytes)")
+                    node_id = self.context.node_id
                     return {
-                        "prototypes": prototypes_b64,
-                        "class_counts": class_counts_b64,
-                        "client_cid": str(self.client_id),
-                        "flower_node_id": str(self.context.node_id) if self.context else "",
+                      #"domain_id": str(self.traindata.dataset.domain_id),
+                        "prototypes": prototypes_encoded,
+                        "class_counts": class_counts_encoded,
+                                    "client_cid": self.client_id,           # your logical ID
+            "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
+
                     }
+                    
                 except Exception as e:
-                    print(f"ERROR: Client {self.client_id} - Encoding prototypes failed: {e}")
-
-            # No prototypes available: still return something small and safe
-            domain_id = getattr(getattr(self.traindata, "dataset", None), "domain_id", -1)
-            return {
-                "domain_id": str(domain_id),
-                "client_cid": str(self.client_id),
-            }
-
-        # ------------------------------------------------------------------
-        # 3) DEFAULT: return minimal identity
-        # ------------------------------------------------------------------
-        domain_id = getattr(getattr(self.traindata, "dataset", None), "domain_id", -1)
+                    print(f"ERROR: Client {self.client_id} - Encoding error: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # No prototypes available
+            print(f"Client {self.client_id} - No prototypes available")
+            return {"domain_id": str(self.traindata.dataset.domain_id)}
+        
+        # Default response
         return {
-            "domain_id": str(domain_id),
-            "simulation_index": str(self.client_id),
-        }
+          "domain_id": str(self.traindata.dataset.domain_id),
+          "simulation_index": str(self.client_id)}
 
     def _extract_and_cache_prototypes(self, round_number):
         """Extract prototypes from trained model and cache them."""
@@ -395,6 +378,60 @@ class FederatedClient(fl.client.NumPyClient):
             self.prototypes_from_last_round = None
             self.class_counts_from_last_round = None
 
+    
+    # ------------------ Helpers ------------------
+    def latest_ckpt_in(self,path):
+      files = sorted(glob.glob(os.path.join(path, "*.pt")))
+      return files[-1] if files else None
+
+    def latest_ckpt(self):
+      # prefer fresh local ckpt; else fall back to prior version output (if provided)
+      ckpt = self.latest_ckpt_in(self.CKPT_DIR)
+      if ckpt:
+        return ckpt
+      if self.PERSIST_INPUT and os.path.exists(self.PERSIST_INPUT):
+        return self.latest_ckpt_in(self.PERSIST_INPUT)
+      return None
+
+    def save_ckpt(self,epoch, step, model, optimizer, scaler=None, extra=None):
+      state = {
+        "epoch": int(epoch),
+        "step": int(step),
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "scaler": scaler.state_dict() if scaler is not None else None,
+        "extra": extra or {},
+    }
+      path = f"{self.CKPT_DIR}/e{epoch:03d}_s{step:08d}.pt"
+      torch.save(state, path)
+
+      # rotate old checkpoints (keep only last N)
+      all_ckpts = sorted(glob.glob(os.path.join(self.CKPT_DIR, "*.pt")))
+      for p in all_ckpts[:-self.KEEP_LAST]:
+        try: os.remove(p)
+        except: pass
+      return path
+
+    def resume_if_any(self,model, optimizer=None, scaler=None, map_location="cpu"):
+      ckpt = self.latest_ckpt()
+      if not ckpt:
+        return 0, 0
+      state = torch.load(ckpt, map_location=map_location)
+      model.load_state_dict(state["model"])
+      if optimizer is not None and "optimizer" in state:
+        optimizer.load_state_dict(state["optimizer"])
+      if scaler is not None and state.get("scaler"):
+        scaler.load_state_dict(state["scaler"])
+      start_epoch = int(state.get("epoch", 0))
+      start_step  = int(state.get("step", 0))
+      print(f"[RESUME] from {ckpt} (epoch={start_epoch}, step={start_step})")
+      return start_epoch, start_step
+
+    def tidy(self):
+      gc.collect()
+      if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     def train(self, net, trainloader, client_id, epochs,cfg, simulate_delay=False):
         """Train the network on the training set."""
 
@@ -404,6 +441,8 @@ class FederatedClient(fl.client.NumPyClient):
         #net.to(self.device)
         net.train()
         scaler = torch.cuda.amp.GradScaler(enabled=True)
+        start_epoch, start_step = self.resume_if_any(net, optimizer, scaler, map_location="cpu")
+        global_step = start_step
         SAVE_EVERY_STEPS   = 2000   # keep this fairly large
         PRINT_EVERY_STEPS  = 100
         KEEP_LAST          = 3      # rotate checkpoints
@@ -437,6 +476,7 @@ class FederatedClient(fl.client.NumPyClient):
                 labels = labels.to(self.device, non_blocking=True)
 
                 optimizer.zero_grad(set_to_none=True)
+
                 # ---- Mixed-precision forward & loss ----
                 with autocast(enabled=amp_enabled):
                   h, _, outputs = net(images)                 # adapt if your net returns differently
@@ -445,6 +485,7 @@ class FederatedClient(fl.client.NumPyClient):
                 # ---- Scaled backward + optimizer step ----
                 scaler.scale(loss).backward()
                 # (Optional) gradient clipping:
+                # scaler.unscale_(optimizer); torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
                 scaler.step(optimizer)
                 scaler.update()
 
@@ -460,7 +501,7 @@ class FederatedClient(fl.client.NumPyClient):
 
                 total += labels.size(0)
                 correct += (preds == labels).sum().item()
-
+                
             # ---- End of epoch metrics ----
             epoch_loss /= len(trainloader.dataset)
             epoch_acc = accuracy.compute().item()
@@ -476,6 +517,10 @@ class FederatedClient(fl.client.NumPyClient):
               writer = csv.writer(csvfile)
               writer.writerow([epoch+1, epoch_loss, epoch_acc])
 
+        # Simulate delay if needed
+       
+
+
         if simulate_delay:
           import random
           base = float(cfg.get("delay_base_sec", 10.0))
@@ -484,6 +529,14 @@ class FederatedClient(fl.client.NumPyClient):
           uuid=client_id
           print(f"[client {uuid}] Simulating straggler delay: {delay:.2f}s")
           time.sleep(delay)
+        
+
+
+
+
+
+
+from hashlib import md5
 
 def get_client_signature(dataset):
     all_labels = [dataset[i][1].item() for i in range(len(dataset))]
@@ -505,16 +558,31 @@ cfg=None  ,
  device= torch.device("cuda")
 
 ) -> Callable[[Context], Client]:  # pylint: disable=too-many-arguments
+    import mlflow
     # be a straggler. This is done so at each round the proportion of straggling
     client = MlflowClient()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def client_fn(context: Context) -> Client:
-        # Destroy any left-over state records that might have bad TTLs
-       
         # Access the client ID (cid) from the context
-        cid = context.node_config["partition-id"]
-     
+      cid = context.node_config["partition-id"]
+      # Create or get experiment
+      experiment = mlflow.get_experiment_by_name(experiment_name)
+      if "mlflow_id" not in context.state.config_records:
+            context.state.config_records["mlflow_id"] = ConfigRecord()
+      print(f'fffkkfj : {device}')
+
+      #check the client id has a run id in the context.state
+      run_ids = context.state.config_records["mlflow_id"]
+
+      if str(cid) not in run_ids:
+            run = client.create_run(experiment.experiment_id)
+            run_ids[str(cid)] = [run.info.run_id]
+    
+      with mlflow.start_run(experiment_id=experiment.experiment_id, run_id=run_ids[str(cid)][0],nested=True) as run:
+        run_id = run.info.run_id
+        #print(f"Created MLflow run for client {cid}: {run_id}")
+        
         input_dim = 28  # Example: 28x28 images flattened
         hidden_dim = 128
         latent_dim = 64
@@ -536,16 +604,17 @@ cfg=None  ,
             trainloader,
             valloader,
             num_epochs,
-            cid
+            cid,
+            mlflow
             ,
+            run_id,
             device,
             context
 
           )
-        return numpy_client.to_client()
+      return numpy_client.to_client()
 
        
        
       
     return client_fn
-
