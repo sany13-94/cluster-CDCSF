@@ -716,7 +716,77 @@ class GPAFStrategy(FedAvg):
 
 
             
-    #strqgglers 
+    #strqgglers vs reliability score 
+
+    def plot_reliability_by_client(self, average_over_rounds: bool = True, save_name: str = "reliability_scores_per_client.png"):
+      """Plot A_s per client:
+       x-axis: logical client id
+       y-axis: A_s (higher = faster/more reliable).
+      """
+    
+
+      if not self.reliability_history:
+        print("No reliability history available to plot.")
+        return
+
+      df = pd.DataFrame(self.reliability_history)
+      df = df[np.isfinite(df["A_s"])]
+
+      if df.empty:
+        print("No valid A_s entries to plot.")
+        return
+
+      if average_over_rounds:
+        agg = (
+            df.groupby(["client_id", "logical_id", "ground_truth_straggler"], as_index=False)["A_s"]
+              .mean()
+        )
+        title_suffix = " (averaged over rounds)"
+      else:
+        last_round = df["round"].max()
+        agg = df[df["round"] == last_round]
+        title_suffix = f" (round {last_round})"
+
+      agg = agg.sort_values("logical_id")
+
+      fast = agg[agg["ground_truth_straggler"] == False]
+      slow = agg[agg["ground_truth_straggler"] == True]
+
+      plt.figure(figsize=(14, 6))
+
+      if not fast.empty:
+        plt.scatter(
+            fast["logical_id"],
+            fast["A_s"],
+            c="green",
+            s=80,
+            alpha=0.8,
+            label="Fast clients (ground truth)",
+        )
+      if not slow.empty:
+        plt.scatter(
+            slow["logical_id"],
+            slow["A_s"],
+            c="red",
+            s=80,
+            alpha=0.8,
+            label="Straggler clients (ground truth)",
+        )
+
+      plt.xlabel("Client logical ID", fontsize=14)
+      plt.ylabel("Reliability score A_s (higher = more reliable)", fontsize=14)
+      plt.title("Per-client reliability scores" + title_suffix, fontsize=16)
+      plt.grid(alpha=0.3)
+      plt.legend(fontsize=12)
+
+      if agg["logical_id"].notna().all():
+        plt.xticks(agg["logical_id"].astype(int))
+
+      plt.tight_layout()
+      save_path = self.save_dir / save_name
+      plt.savefig(save_path, dpi=300, bbox_inches="tight")
+      print(f"Reliability score plot saved to: {save_path}")
+      plt.show()
 
 
     def _observe_mapping(self, results):
