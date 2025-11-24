@@ -165,6 +165,10 @@ class GPAFStrategy(FedAvg):
         initial_alpha1: float = 0.6  # Initial reliability weight
         initial_alpha2: float = 0.4  # Initial fairness weight
         phase_threshold: int = 20  # Round to switch weight emphasis
+
+        # NEW: to log per-round reliability scores
+        self.reliability_history = []  # list of dicts
+        self.ground_truth_cids = set()  # already used for GT stragglers
        
         self.total_rounds=total_rounds
         method_name="CDCSF"
@@ -300,6 +304,43 @@ class GPAFStrategy(FedAvg):
             return self.initial_parameters
         return super().initialize_parameters(client_manager)
     
+    def log_reliability_scores(self, server_round: int, client_ids: list[str]) -> None:
+      """Compute A_s(c) for given clients and log them for later visualization."""
+      # Reuse your existing function (no formula duplication)
+      scores = self.compute_reliability_scores(client_ids)
+
+      # Ground truth set like {"client_0", "client_1"}
+      gt_set = self.ground_truth_cids
+      gt_idx_set = {
+        int(cid.split("_", 1)[1])
+        for cid in gt_set
+        if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
+      }
+
+      for cid in client_ids:
+        sid = str(cid)
+        # logical index (integer) for plotting on x-axis
+        try:
+            if sid.startswith("client_"):
+                logical_idx = int(sid.split("_", 1)[1])
+            else:
+                logical_idx = int(sid)
+        except Exception:
+            logical_idx = None
+
+        is_gt_straggler = (
+            logical_idx is not None and logical_idx in gt_idx_set
+        )
+
+        rec = {
+            "round": server_round,
+            "client_id": sid,
+            "logical_id": logical_idx,
+            "A_s": scores.get(cid, 0.5),  # reliability score
+            "ground_truth_straggler": is_gt_straggler,
+        }
+        self.reliability_history.append(rec)
+    
     def _save_checkpoint(
         self,
         server_round: int,
@@ -386,6 +427,7 @@ class GPAFStrategy(FedAvg):
             current_round_durations = []
             current_participants = set()   # set of logical ids
             new_rows: List[dict] = []
+            participants = []
 
             # Process results and update tracking
             for client_proxy, fit_res in results:
@@ -451,6 +493,8 @@ class GPAFStrategy(FedAvg):
                 # Collect parameters for aggregation
                 clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
                 num_samples_list.append(fit_res.num_examples)
+                if lid is not None:
+                    participants.append(str(lid))
 
             self.last_round_participants = current_participants
             self.total_rounds_completed = server_round
@@ -467,6 +511,10 @@ class GPAFStrategy(FedAvg):
 
             # Prototype logging
             self._log_prototypes_after_fit(server_round, results)
+            
+            # 3) Log reliability scores A_s(c) for plotting
+            if participants:
+              self.log_reliability_scores(server_round, participants)
 
             # Save checkpoint periodically
             if server_round % self.save_every == 0:
