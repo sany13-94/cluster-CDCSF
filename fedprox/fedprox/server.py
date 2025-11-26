@@ -134,6 +134,7 @@ class GPAFStrategy(FedAvg):
         self.selection_counts = defaultdict(int)
         self.accuracy_history = defaultdict(float)
         self._current_accuracies = {}
+        self.cluster_assignment_history= {}
         # ... existing initialization ...
         # Core parameters from corrected methodology
 
