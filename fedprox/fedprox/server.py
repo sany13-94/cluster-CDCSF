@@ -261,6 +261,8 @@ class GPAFStrategy(FedAvg):
         self.map_path = Path(map_path)
         expected_unique=self.min_fit_clients
         self.expected_unique = expected_unique
+        self.proto_cluster_rows = []  # For CSV export
+
 
         # Track what we've already recorded: logical_id values
         self._seen = set()
@@ -344,7 +346,7 @@ class GPAFStrategy(FedAvg):
             "ground_truth_straggler": is_gt_straggler,
         }
         self.reliability_history.append(rec)
-        
+
     def _log_prototypes_with_clusters(
     self,
     server_round: int,
