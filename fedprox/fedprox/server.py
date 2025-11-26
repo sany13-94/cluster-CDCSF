@@ -9,6 +9,7 @@ import pickle
 import datetime
 import time
 from numpy.linalg import norm
+from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib import cm
 from matplotlib.colors import ListedColormap
 from torch.distributions import Dirichlet, Categorical
@@ -515,6 +516,14 @@ class GPAFStrategy(FedAvg):
             # 3) Log reliability scores A_s(c) for plotting
             if participants:
               self.log_reliability_scores(server_round, participants)
+            
+           
+            # <-- PLACE THE CALL HERE -->
+            self._log_prototypes_with_clusters(
+        server_round,
+        results,
+        client_cluster_assignments=self.client_assignments
+    )
 
             # Save checkpoint periodically
             if server_round % self.save_every == 0:
@@ -522,95 +531,111 @@ class GPAFStrategy(FedAvg):
                 self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
 
             # Finalization at last round
+            # AFTER TRAINING, LOG WITH CLUSTER INFO
+            
             if server_round == self.total_rounds:
                 self.save_client_mapping()
                 print("\n" + "=" * 80)
                 print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
                 print("=" * 80)
                 self._save_all_results()
-                self._save_prototype_heatmap()
+                #self._save_prototype_heatmap()
+                # After training finishes
+                self._save_cluster_heatmap()
 
             return ndarrays_to_parameters(aggregated_params), {}
 
         except Exception as e:
             print(f"[aggregate_fit] Error: {e}")
             return None, {} 
-    # ---- in your Strategy class ----
-    def _log_prototypes_after_fit(
+
+
+    # ---- show prototypes  ----
+    def _log_prototypes_with_clusters(
     self,
     server_round: int,
     results: list,
+    client_cluster_assignments: dict,  # {client_id: cluster_id} from E-step
 ):
-     """
-     For each client that returned FitRes:
-      - use metrics["client_cid"] as logical id (0,1,2,...)
-      - call get_properties("prototypes") on that client
-      - decode, compute proto_score, store in self.proto_rows
-     """
-     if not results:
+      """
+      ENHANCED VERSION: Logs both prototypes AND cluster assignments.
+    
+      Args:
+        server_round: Current round number
+        results: List of (client_proxy, FitRes) tuples
+        client_cluster_assignments: Dict from your E-step {client_id: cluster_id}
+      """
+      if not results:
         return
-
-     print(f"[ProtoLog] Round {server_round}: logging prototypes for {len(results)} clients")
-
-     for client_proxy, fit_res in results:
+    
+      print(f"[ProtoLog] Round {server_round}: logging {len(results)} clients with cluster info")
+    
+      for client_proxy, fit_res in results:
         metrics = fit_res.metrics or {}
-        cid = metrics.get("client_cid", None)  # logical id from client.fit()
+        cid = metrics.get("client_cid", None)
+        
         if cid is None:
-            print(f"  [ProtoLog] client_proxy.cid={client_proxy.cid}: no client_cid in metrics, skipping")
             continue
-
+        
         try:
             cid_int = int(cid)
         except Exception:
-            cid_int = cid  # keep as string if needed
-
+            cid_int = cid
+        
+        # Get cluster assignment from E-step
+        cluster_id = client_cluster_assignments.get(cid_int, -1)
+        
+        # Store cluster assignment
+        self.cluster_assignment_history[server_round][cid_int] = cluster_id
+        
         try:
-            # Ask client for its prototypes
+            # Get prototypes
             get_protos_res = client_proxy.get_properties(
                 ins=GetPropertiesIns(config={"request": "prototypes"}),
                 timeout=15.0,
                 group_id=None,
             )
-
+            
             props = get_protos_res.properties
             prototypes_encoded = props.get("prototypes")
             class_counts_encoded = props.get("class_counts")
             domain_id_raw = props.get("domain_id", None)
-            client_id_prop = props.get("client_id", None)  # just for sanity check
-
+            
             try:
                 domain_id = int(domain_id_raw) if domain_id_raw is not None else -1
             except Exception:
                 domain_id = -1
-
+            
             if not prototypes_encoded or not class_counts_encoded:
-                print(f"  [ProtoLog] Client {cid_int}: no prototypes/class_counts, skipping")
                 continue
-
+            
             try:
                 prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
-                # class_counts = pickle.loads(base64.b64decode(class_counts_encoded))  # optional
             except Exception as e:
                 print(f"  [ProtoLog] Client {cid_int}: decode error: {e}")
                 continue
-
+            
             if not isinstance(prototypes, dict):
-                print(f"  [ProtoLog] Client {cid_int}: prototypes not a dict, skipping")
                 continue
-
-            proto_score = self._compute_proto_score_from_dict(prototypes)
-
-            self.proto_rows.append({
+            
+            # Compute prototype score (optional, for reference)
+            #proto_score = self._compute_proto_score_from_dict(prototypes)
+            
+            # Store complete information
+            self.proto_cluster_rows.append({
                 "round": int(server_round),
                 "client_id": cid_int,
+                "cluster_id": cluster_id,
                 "proto_score": float(proto_score),
                 "domain_id": domain_id,
             })
-
-            print(f"  [ProtoLog] Round {server_round} | Client {cid_int} | domain={domain_id} | proto_score={proto_score:.4f}")
-
+            
+            print(f"  [ProtoLog] Round {server_round} | Client {cid_int} | "
+                  f"EM Cluster={cluster_id} | Domain={domain_id} | Score={proto_score:.4f}")
+            
         except Exception as e:
-            print(f"  [ProtoLog] client_proxy.cid={client_proxy.cid}: get_properties failed: {e}")
+            print(f"  [ProtoLog] client {cid_int}: get_properties failed: {e}")
+
 
 
     def _predict_stragglers_from_score(self, T_max, client_ids):
@@ -830,7 +855,6 @@ class GPAFStrategy(FedAvg):
         print(f"Validation results saved to {filename}")
         return df
 
-  
 
     def _fedavg_parameters(
         self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
@@ -1658,62 +1682,172 @@ class GPAFStrategy(FedAvg):
      all_vecs = np.stack(vecs, axis=0)
      return float(all_vecs.mean())
 
-    def _save_prototype_heatmap(self):
-     if not self.proto_rows:
-        print("[ProtoHeatmap] No prototype logs recorded, skipping.")
+    def _save_cluster_heatmap(self):
+      """
+      Generate cluster-based heatmap showing EM cluster assignments.
+      This replaces your _save_prototype_heatmap() method.
+      """
+      if not self.cluster_assignment_history:
+        print("[ClusterHeatmap] No cluster assignment history, skipping.")
         return
-
-     df = pd.DataFrame(self.proto_rows)
-     # pivot: rows = rounds, columns = client_id, value = proto_score
-     table = df.pivot_table(
-        index="round",
-        columns="client_id",
-        values="proto_score",
-        aggfunc="mean",
+    
+      # Convert to DataFrame
+      rows = []
+      for round_num, assignments in self.cluster_assignment_history.items():
+        for client_id, cluster_id in assignments.items():
+            rows.append({
+                'round': round_num,
+                'client_id': client_id,
+                'cluster_id': cluster_id
+            })
+    
+      df = pd.DataFrame(rows)
+    
+      # Note: 0 = not selected, cluster_id+1 for selected clients
+      table = df.pivot_table(
+        index="client_id",
+        columns="round",
+        values="cluster_id",
+        aggfunc="first"  # Take first value if duplicates
     ).sort_index(axis=0).sort_index(axis=1)
+    
+      # Replace NaN with -1 (not selected), then add 1 to all values
+      # So: -1 -> 0 (not selected), 0 -> 1 (cluster 0), 1 -> 2 (cluster 1), etc.
+      matrix = table.fillna(-1).values + 1
+      matrix = matrix.astype(int)
+    
+      # Export CSV
+      csv_path = self.results_dir / "cdcsf_cluster_assignments.csv"
+      df.to_csv(csv_path, index=False)
+      print(f"[ClusterHeatmap] Saved assignments CSV -> {csv_path}")
+    
+      # Also save the detailed proto_cluster_rows
+      if self.proto_cluster_rows:
+        detailed_csv = self.results_dir / "cdcsf_detailed_logs.csv"
+        pd.DataFrame(self.proto_cluster_rows).to_csv(detailed_csv, index=False)
+        print(f"[ClusterHeatmap] Saved detailed logs -> {detailed_csv}")
+    
+      # Generate heatmap
+      num_clients, num_rounds = matrix.shape
+    
+      # Adaptive figure size
+      width = max(16, min(28, num_rounds * 0.1))
+      height = max(8, min(16, num_clients * 0.45))
+    
+      fig, ax = plt.subplots(figsize=(width, height), dpi=100)
+    
+      # Discrete colormap for clusters
+      colors = [
+        '#ffffff',  # 0: Not selected (white)
+        '#4e79a7',  # 1: Cluster 0 (blue)
+        '#f28e2b',  # 2: Cluster 1 (orange)
+        '#e15759',  # 3: Cluster 2 (red)
+        '#76b7b2',  # 4: Cluster 3 (teal)
+        '#59a14f',  # 5: Cluster 4 (green)
+        '#edc948',  # 6: Cluster 5 (yellow)
+        '#b07aa1',  # 7: Cluster 6 (purple)
+        '#ff9da7',  # 8: Cluster 7 (pink)
+        '#9c755f'   # 9: Cluster 8 (brown)
+    ]
+    
+      K = self.num_clusters + 1  # +1 for "not selected"
+      cmap = ListedColormap(colors[:K])
+      bounds = list(range(0, K + 1))
+      norm = BoundaryNorm(bounds, cmap.N)
+    
+      # Plot heatmap
+      im = ax.imshow(matrix, aspect='auto', cmap=cmap, norm=norm, interpolation='nearest')
+    
+      # Colorbar
+      cbar = plt.colorbar(im, ax=ax, ticks=list(range(0, K)),
+                       pad=0.02, aspect=30, shrink=0.75)
+      cbar_labels = ['Not selected'] + [f'EM Cluster {i}' for i in range(self.num_clusters)]
+      cbar.ax.set_yticklabels(cbar_labels, fontsize=11)
+    
+      # Title
+      ax.set_title('CDCSF: EM Cluster-Based Selection Pattern',
+                fontsize=20, fontweight='bold', pad=25)
+    
+      # Y-axis (Clients)
+      ax.set_ylabel('Client ID', fontsize=15, fontweight='bold', labelpad=12)
+      y_positions = np.arange(num_clients) + 0.5
+      ax.set_yticks(y_positions)
+      client_labels = [f'Client {int(c)}' for c in table.index]
+      ax.set_yticklabels(client_labels, fontsize=10, rotation=0, va='center')
+    
+      # X-axis (Rounds)
+      ax.set_xlabel('Round', fontsize=15, fontweight='bold', labelpad=12)
+    
+      # Intelligent tick spacing
+      if num_rounds <= 20:
+        tick_spacing, rotation = 1, 45
+      elif num_rounds <= 50:
+        tick_spacing, rotation = 2, 50
+      elif num_rounds <= 100:
+        tick_spacing, rotation = 5, 60
+      elif num_rounds <= 200:
+        tick_spacing, rotation = 10, 70
+      else:
+        tick_spacing, rotation = max(10, num_rounds // 30), 75
+    
+      x_tick_positions = np.arange(0, num_rounds, tick_spacing)
+      ax.set_xticks(x_tick_positions + 0.5)
+      round_labels = [str(int(table.columns[i])) for i in x_tick_positions if i < len(table.columns)]
+      ax.set_xticklabels(round_labels, fontsize=9, rotation=rotation, ha='right')
+    
+      # Border
+      for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(1.0)
+        spine.set_color('#333333')
+    
+      plt.tight_layout()
+    
+      # Save
+      png_path = self.results_dir / "cdcsf_cluster_heatmap.png"
+      plt.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
+      print(f"[ClusterHeatmap] Saved heatmap PNG -> {png_path}")
+    
+      plt.close()
+    
+      # Print statistics
+      self._print_cluster_coverage_stats(matrix, num_rounds)
+    
+    def _print_cluster_coverage_stats(self, matrix, num_rounds):
+      """Print detailed cluster coverage statistics."""
+      print(f"CDCSF - EM Cluster Coverage Statistics")
+  
+      # Per-round coverage
+      rounds_covering_all = 0
+      cluster_appearance_count = np.zeros(self.num_clusters, dtype=int)
+    
+      for r in range(num_rounds):
+        round_data = matrix[:, r]
+        unique_clusters = set(round_data[round_data > 0]) - {0}
+        unique_clusters = {c - 1 for c in unique_clusters}  # Adjust for +1 offset
+        
+        if len(unique_clusters) == self.num_clusters:
+            rounds_covering_all += 1
+        
+        for c in unique_clusters:
+            if 0 <= c < self.num_clusters:
+                cluster_appearance_count[c] += 1
+    
+      print(f"Rounds covering ALL EM clusters: {rounds_covering_all}/{num_rounds} "
+            f"({rounds_covering_all/num_rounds*100:.1f}%)")
+    
+      for c in range(self.num_clusters):
+        print(f"  EM Cluster {c}: {cluster_appearance_count[c]}/{num_rounds} rounds "
+              f"({cluster_appearance_count[c]/num_rounds*100:.1f}%)")
+    
+      # Balance metric
+      std_dev = np.std(cluster_appearance_count)
+      balance_score = 1.0 / (1.0 + std_dev)
+    
+      print(f"\nBalance Score: {balance_score:.3f} (1.0 = perfect balance)")
+      print(f"Std Deviation: {std_dev:.2f} (lower = more balanced)")
+      print(f"{'='*60}\n")
 
-     #tag = self.method_name.replace(" ", "_")
-     csv_path = self.results_dir / f"proto_heatmap_CDCSF.csv"
-     table.to_csv(csv_path)
-     print(f"[ProtoHeatmap] Saved matrix CSV -> {csv_path}")
-
-     # (optional) what domain each client mostly belongs to
-     dom_agg = (df.groupby("client_id")["domain_id"]
-                 .agg(lambda x: np.bincount([d for d in x if d >= 0]).argmax()
-                      if any(np.array(x) >= 0) else -1))
-
-     dom_csv = self.results_dir / f"proto_client_domains_CDCSF.csv"
-     dom_agg.to_csv(dom_csv, header=["domain_id"])
-     print(f"[ProtoHeatmap] Saved client→domain map -> {dom_csv}")
-
-     # Make heatmap
-     plt.figure(figsize=(10, 6))
-     im = plt.imshow(
-        table.values.T,     # shape = (num_clients, num_rounds)
-        aspect="auto",
-        origin="lower",
-        cmap="viridis",
-    )
-     plt.colorbar(im, label="Prototype score")
-     plt.xticks(
-        np.arange(len(table.index)),
-        table.index,
-        rotation=45,
-        ha="right",
-    )
-     plt.yticks(
-        np.arange(len(table.columns)),
-        [f"Client {c}" for c in table.columns],
-    )
-     plt.xlabel("Round")
-     plt.ylabel("Client ID (logical)")
-     plt.title(f"Prototype-based selection pattern ")
-     plt.tight_layout()
-
-     png_path = self.results_dir / f"proto_heatmap_CDCSF.png"
-     plt.savefig(png_path, dpi=200)
-     plt.close()
-     print(f"[ProtoHeatmap] Saved heatmap PNG -> {png_path}")
 
     def save_participation_stats(self, filename="client_participation.csv"):
         """Save participation statistics at the end of training"""
