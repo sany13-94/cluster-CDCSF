@@ -97,7 +97,7 @@ class GPAFStrategy(FedAvg):
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
         #clusters parameters
-        self.warmup_rounds = 20 # Stage 1 duration
+        self.warmup_rounds = 1 # Stage 20 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
@@ -189,12 +189,10 @@ class GPAFStrategy(FedAvg):
         # NEW RELIABILITY ATTRIBUTE
         self.reliability_lambda = reliability_lambda
 
-        self.phase_threshold = 30
         
         # CSMDA Hyperparameters
         self.alpha = 0.3  # EMA decay for training time
         self.epsilon = 0.1  # straggler tolerance (10% of T_max)
-        self.phase_threshold = 30  # switch from reliability to fairness focus
         # EMA Training Time Tracking
         self.ema_alpha = ema_alpha
         self.training_times = {}  # T_c(i) - EMA of training times
