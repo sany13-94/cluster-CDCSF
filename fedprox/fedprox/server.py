@@ -371,7 +371,7 @@ class GPAFStrategy(FedAvg):
         
         # Get cluster assignment from E-step
         cluster_id = client_cluster_assignments.get(cid_int, -1)
-        
+        print(f'client ass {client_cluster_assignments}')
         # Store cluster assignment
         self.cluster_assignment_history[server_round][cid_int] = cluster_id
         
