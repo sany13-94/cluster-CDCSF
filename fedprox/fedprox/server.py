@@ -160,6 +160,8 @@ class GPAFStrategy(FedAvg):
         self.client_assignments = {}
         self.cluster_prototypes = {}
         self.last_round_participants = set()
+        self.cluster_assignment_history = defaultdict(dict)
+
         # Virtual cluster configuration
         self.use_virtual_cluster = True  # Enable virtual cluster for never-participated clients
         ema_alpha: float = 0.3  # EMA smoothing for training times
@@ -342,7 +344,85 @@ class GPAFStrategy(FedAvg):
             "ground_truth_straggler": is_gt_straggler,
         }
         self.reliability_history.append(rec)
+        
+    def _log_prototypes_with_clusters(
+    self,
+    server_round: int,
+    results: list,
+    client_cluster_assignments: dict,  # {client_id: cluster_id} from E-step
+):
     
+      if not results:
+        return
+    
+      print(f"[ProtoLog] Round {server_round}: logging {len(results)} clients with cluster info")
+    
+      for client_proxy, fit_res in results:
+        metrics = fit_res.metrics or {}
+        cid = metrics.get("client_cid", None)
+        
+        if cid is None:
+            continue
+        
+        try:
+            cid_int = int(cid)
+        except Exception:
+            cid_int = cid
+        
+        # Get cluster assignment from E-step
+        cluster_id = client_cluster_assignments.get(cid_int, -1)
+        
+        # Store cluster assignment
+        self.cluster_assignment_history[server_round][cid_int] = cluster_id
+        
+        try:
+            # Get prototypes
+            get_protos_res = client_proxy.get_properties(
+                ins=GetPropertiesIns(config={"request": "prototypes"}),
+                timeout=15.0,
+                group_id=None,
+            )
+            
+            props = get_protos_res.properties
+            prototypes_encoded = props.get("prototypes")
+            class_counts_encoded = props.get("class_counts")
+            domain_id_raw = props.get("domain_id", None)
+            
+            try:
+                domain_id = int(domain_id_raw) if domain_id_raw is not None else -1
+            except Exception:
+                domain_id = -1
+            
+            if not prototypes_encoded or not class_counts_encoded:
+                continue
+            
+            try:
+                prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
+            except Exception as e:
+                print(f"  [ProtoLog] Client {cid_int}: decode error: {e}")
+                continue
+            
+            if not isinstance(prototypes, dict):
+                continue
+            
+            # Compute prototype score (optional, for reference)
+            proto_score = self._compute_proto_score_from_dict(prototypes)
+            
+            # Store complete information
+            self.proto_cluster_rows.append({
+                "round": int(server_round),
+                "client_id": cid_int,
+                "cluster_id": cluster_id,
+                "proto_score": float(proto_score),
+                "domain_id": domain_id,
+            })
+            
+            print(f"  [ProtoLog] Round {server_round} | Client {cid_int} | "
+                  f"EM Cluster={cluster_id} | Domain={domain_id} | Score={proto_score:.4f}")
+            
+        except Exception as e:
+            print(f"  [ProtoLog] client {cid_int}: get_properties failed: {e}")
+
     def _save_checkpoint(
         self,
         server_round: int,
