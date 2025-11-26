@@ -511,12 +511,13 @@ class GPAFStrategy(FedAvg):
             aggregated_params = self._fedavg_parameters(clients_params_list, num_samples_list)
 
             # Prototype logging
-            self._log_prototypes_after_fit(server_round, results)
+            #self._log_prototypes_after_fit(server_round, results)
             
             # 3) Log reliability scores A_s(c) for plotting
+            """
             if participants:
               self.log_reliability_scores(server_round, participants)
-            
+            """
            
             # <-- PLACE THE CALL HERE -->
             self._log_prototypes_with_clusters(
@@ -1270,7 +1271,7 @@ class GPAFStrategy(FedAvg):
         except Exception as e:
             print(f"Error computing metrics: {e}")
     
-        def visualize_client_participation(self, participation_dict, save_path="participation_chart.png",
+    def visualize_client_participation(self, participation_dict, save_path="participation_chart.png",
                                        method_name="FedProto-Fair"):
 
           # participation_dict: {lid: count}
