@@ -418,7 +418,7 @@ class GPAFStrategy(FedAvg):
             })
             
             print(f"  [ProtoLog] Round {server_round} | Client {cid_int} | "
-                  f"EM Cluster={cluster_id} | Domain={domain_id} | Score={proto_score:.4f}")
+                  f"EM Cluster={cluster_id} | Domain={domain_id} | Score={proto_score:.4f} and cluster id = {cluster_id}")
             
         except Exception as e:
             print(f"  [ProtoLog] client {cid_int}: get_properties failed: {e}")
