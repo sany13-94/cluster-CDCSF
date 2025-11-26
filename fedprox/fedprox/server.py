@@ -518,7 +518,7 @@ class GPAFStrategy(FedAvg):
             if participants:
               self.log_reliability_scores(server_round, participants)
             """
-           
+            self.cluster_assignment_history[server_round] = {}
             # <-- PLACE THE CALL HERE -->
             self._log_prototypes_with_clusters(
         server_round,
@@ -549,94 +549,6 @@ class GPAFStrategy(FedAvg):
         except Exception as e:
             print(f"[aggregate_fit] Error: {e}")
             return None, {} 
-
-
-    # ---- show prototypes  ----
-    def _log_prototypes_with_clusters(
-    self,
-    server_round: int,
-    results: list,
-    client_cluster_assignments: dict,  # {client_id: cluster_id} from E-step
-):
-      """
-      ENHANCED VERSION: Logs both prototypes AND cluster assignments.
-    
-      Args:
-        server_round: Current round number
-        results: List of (client_proxy, FitRes) tuples
-        client_cluster_assignments: Dict from your E-step {client_id: cluster_id}
-      """
-      if not results:
-        return
-    
-      print(f"[ProtoLog] Round {server_round}: logging {len(results)} clients with cluster info")
-    
-      for client_proxy, fit_res in results:
-        metrics = fit_res.metrics or {}
-        cid = metrics.get("client_cid", None)
-        
-        if cid is None:
-            continue
-        
-        try:
-            cid_int = int(cid)
-        except Exception:
-            cid_int = cid
-        
-        # Get cluster assignment from E-step
-        cluster_id = client_cluster_assignments.get(cid_int, -1)
-        
-        # Store cluster assignment
-        self.cluster_assignment_history[server_round][cid_int] = cluster_id
-        
-        try:
-            # Get prototypes
-            get_protos_res = client_proxy.get_properties(
-                ins=GetPropertiesIns(config={"request": "prototypes"}),
-                timeout=15.0,
-                group_id=None,
-            )
-            
-            props = get_protos_res.properties
-            prototypes_encoded = props.get("prototypes")
-            class_counts_encoded = props.get("class_counts")
-            domain_id_raw = props.get("domain_id", None)
-            
-            try:
-                domain_id = int(domain_id_raw) if domain_id_raw is not None else -1
-            except Exception:
-                domain_id = -1
-            
-            if not prototypes_encoded or not class_counts_encoded:
-                continue
-            
-            try:
-                prototypes = pickle.loads(base64.b64decode(prototypes_encoded))
-            except Exception as e:
-                print(f"  [ProtoLog] Client {cid_int}: decode error: {e}")
-                continue
-            
-            if not isinstance(prototypes, dict):
-                continue
-            
-            # Compute prototype score (optional, for reference)
-            #proto_score = self._compute_proto_score_from_dict(prototypes)
-            
-            # Store complete information
-            self.proto_cluster_rows.append({
-                "round": int(server_round),
-                "client_id": cid_int,
-                "cluster_id": cluster_id,
-                "proto_score": float(proto_score),
-                "domain_id": domain_id,
-            })
-            
-            print(f"  [ProtoLog] Round {server_round} | Client {cid_int} | "
-                  f"EM Cluster={cluster_id} | Domain={domain_id} | Score={proto_score:.4f}")
-            
-        except Exception as e:
-            print(f"  [ProtoLog] client {cid_int}: get_properties failed: {e}")
-
 
 
     def _predict_stragglers_from_score(self, T_max, client_ids):
@@ -741,9 +653,7 @@ class GPAFStrategy(FedAvg):
             self.validation_history.append(rec)
 
 
-            
-    #strqgglers vs reliability score 
-
+          
     def plot_reliability_by_client(self, average_over_rounds: bool = True, save_name: str = "reliability_scores_per_client.png"):
       """Plot A_s per client:
        x-axis: logical client id
