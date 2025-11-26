@@ -361,7 +361,7 @@ class GPAFStrategy(FedAvg):
     
       for client_proxy, fit_res in results:
         metrics = fit_res.metrics or {}
-        cid = metrics.get("client_cid", None)
+        cid = metrics.get("client_id", None)
         
         if cid is None:
             continue
