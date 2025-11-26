@@ -418,7 +418,7 @@ class GPAFStrategy(FedAvg):
             })
             
             print(f"  [ProtoLog] Round {server_round} | Client {cid_int} | "
-                  f"EM Cluster={cluster_id} | Domain={domain_id} | Score={proto_score:.4f} and cluster id = {cluster_id}")
+                  f"EM Cluster={cluster_id} | Domain={domain_id} | Score={proto_score:.4f}")
             
         except Exception as e:
             print(f"  [ProtoLog] client {cid_int}: get_properties failed: {e}")
@@ -599,6 +599,8 @@ class GPAFStrategy(FedAvg):
             if participants:
               self.log_reliability_scores(server_round, participants)
             """
+            cluster_assignments = getattr(self, 'current_round_assignments', {})
+
             self.cluster_assignment_history[server_round] = {}
             # <-- PLACE THE CALL HERE -->
             self._log_prototypes_with_clusters(
@@ -1435,6 +1437,8 @@ class GPAFStrategy(FedAvg):
                     global_assignments,
                     class_counts_list
                 )
+                # ✅ ADD THIS LINE
+                self.current_round_assignments = global_assignments.copy()
 
                 for client_id, cluster_id in global_assignments.items():
                     self.client_assignments[client_id] = cluster_id
@@ -1454,6 +1458,7 @@ class GPAFStrategy(FedAvg):
                         true_domain_map=None
                     )
             else:
+                self.current_round_assignments = self.client_assignments.copy()
                 print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
                 print(f"  Will use unified pool selection")
 
