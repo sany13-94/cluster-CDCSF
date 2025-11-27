@@ -600,13 +600,17 @@ class GPAFStrategy(FedAvg):
               self.log_reliability_scores(server_round, participants)
             """
             cluster_assignments = getattr(self, 'current_round_assignments', {})
+            print(f' clients assi  {cluster_assignments}')
+            print(f' clients assy  {self.current_round_assignments}')
+
+
 
             self.cluster_assignment_history[server_round] = {}
             # <-- PLACE THE CALL HERE -->
             self._log_prototypes_with_clusters(
         server_round,
         results,
-        client_cluster_assignments=cluster_assignments
+        client_cluster_assignments=self.current_round_assignments
     )
 
             # Save checkpoint periodically
