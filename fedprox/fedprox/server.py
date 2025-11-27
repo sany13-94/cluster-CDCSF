@@ -371,6 +371,8 @@ class GPAFStrategy(FedAvg):
         
         # Get cluster assignment from E-step
         cluster_id = client_cluster_assignments.get(cid_int, -1)
+        print(f"[DEBUG] Looking for client {cid_int} (type: {type(cid_int)})")
+
         print(f'client ass {client_cluster_assignments}')
         # Store cluster assignment
         self.cluster_assignment_history[server_round][cid_int] = cluster_id
@@ -1443,6 +1445,8 @@ class GPAFStrategy(FedAvg):
                 )
                 # ✅ ADD THIS LINE
                 self.current_round_assignments = global_assignments.copy()
+                print(f"[DEBUG] Stored in class variable: {self.current_round_assignments}")
+
 
                 for client_id, cluster_id in global_assignments.items():
                     self.client_assignments[client_id] = cluster_id
@@ -1461,6 +1465,7 @@ class GPAFStrategy(FedAvg):
                         server_round=server_round,
                         true_domain_map=None
                     )
+
             else:
                 self.current_round_assignments = self.client_assignments.copy()
                 print(f"\n[Clustering Skipped] Need {self.num_clusters} clients, have {len(clients_with_prototypes)}")
