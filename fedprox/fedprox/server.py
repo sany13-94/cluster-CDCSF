@@ -1430,7 +1430,7 @@ class GPAFStrategy(FedAvg):
                     print("  Initializing cluster prototypes with k-means++...")
                     self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
 
-                global_assignments = self._e_step(all_prototypes_list, all_client_ids)
+                global_assignments = self.e_step_robust(all_prototypes_list, all_client_ids)
                 self.cluster_prototypes = self._m_step(
                     all_prototypes_list,
                     all_client_ids,
@@ -1912,7 +1912,7 @@ class GPAFStrategy(FedAvg):
     
       return cluster_prototypes
 
-
+    '''
     def _e_step(self, all_prototypes, client_ids):
       """E-step: Assign clients to clusters based on prototype similarity"""
       assignments = {}
@@ -2021,6 +2021,153 @@ class GPAFStrategy(FedAvg):
 
       print(f"[M-step] Updated {len(new_clusters)} cluster prototypes")
       return new_clusters
+    '''
+    def e_step_robust(self, all_prototypes, client_ids, regularization_weight=0.2):
+        """
+        E-step with multiple enhancements:
+        1. Cluster size regularization
+        2. Entropy-based balancing
+        3. Collapse detection
+        """
+        assignments = {}
+        cluster_counts = defaultdict(int)
+        
+        # First pass: compute raw distances
+        client_distances = {}
+        for client_id, prototypes in zip(client_ids, all_prototypes):
+            distances = {}
+            
+            for cluster_id in self.cluster_prototypes:
+                total_dist = 0
+                shared_classes = 0
+                
+                for class_id in prototypes:
+                    if class_id in self.cluster_prototypes[cluster_id]:
+                        client_proto = np.array(prototypes[class_id])
+                        cluster_proto = np.array(self.cluster_prototypes[cluster_id][class_id])
+                        dist = self._cosine_distance(client_proto, cluster_proto)
+                        total_dist += dist
+                        shared_classes += 1
+                
+                avg_dist = total_dist / shared_classes if shared_classes > 0 else 1.0
+                distances[cluster_id] = avg_dist
+            
+            client_distances[client_id] = distances
+        
+        # Second pass: assign with regularization
+        for client_id, distances in client_distances.items():
+            regularized_distances = {}
+            
+            for cluster_id, dist in distances.items():
+                # Add cluster size penalty (prevents one cluster from dominating)
+                size_penalty = (cluster_counts[cluster_id] / len(client_ids)) * regularization_weight
+                
+                # Add entropy bonus (encourages balanced distribution)
+                current_entropy = self._compute_cluster_entropy(cluster_counts, len(client_ids))
+                target_entropy = np.log(self.num_clusters)  # Maximum entropy
+                entropy_bonus = (target_entropy - current_entropy) * 0.1
+                
+                regularized_distances[cluster_id] = dist + size_penalty - entropy_bonus
+            
+            best_cluster = min(regularized_distances, key=regularized_distances.get)
+            assignments[client_id] = best_cluster
+            cluster_counts[best_cluster] += 1
+        
+        # Check for collapse and rebalance if needed
+        if self._detect_collapse(cluster_counts, len(client_ids)):
+            print(f"[EM] Collapse detected! Rebalancing...")
+            assignments = self._rebalance_clusters(assignments, cluster_counts, client_distances)
+        
+        # Compute and log stability
+        stability = self._compute_cluster_stability(cluster_counts)
+        self.cluster_stability_scores.append(stability)
+        
+        return assignments
+    
+    def _compute_cluster_entropy(self, cluster_counts, total_clients):
+        """Compute entropy of cluster distribution (higher = more balanced)."""
+        if total_clients == 0:
+            return 0.0
+        
+        probs = [count / total_clients for count in cluster_counts.values()]
+        if not probs:
+            return 0.0
+        
+        return entropy(probs)
+    
+    def _detect_collapse(self, cluster_counts, total_clients, threshold=0.65):
+        """Detect if one cluster has too many clients."""
+        if not cluster_counts:
+            return False
+        
+        max_size = max(cluster_counts.values())
+        return (max_size / total_clients) > threshold
+    
+    def _rebalance_clusters(self, assignments, cluster_counts, client_distances):
+        """Force rebalancing when collapse detected."""
+        target_size = len(assignments) // self.num_clusters
+        
+        # Find overfull clusters
+        overfull = {k: v for k, v in cluster_counts.items() if v > target_size * 1.3}
+        underfull = {k: v for k, v in cluster_counts.items() if v < target_size * 0.7}
+        
+        if not overfull or not underfull:
+            return assignments
+        
+        # Move clients from overfull to underfull
+        for overfull_cluster in overfull:
+            clients_in_cluster = [cid for cid, c in assignments.items() if c == overfull_cluster]
+            
+            # Sort by distance to cluster (move furthest ones)
+            clients_sorted = sorted(
+                clients_in_cluster,
+                key=lambda cid: client_distances[cid][overfull_cluster],
+                reverse=True
+            )
+            
+            excess = cluster_counts[overfull_cluster] - target_size
+            moved = 0
+            
+            for underfull_cluster in underfull:
+                need = target_size - cluster_counts.get(underfull_cluster, 0)
+                to_move = min(need, excess - moved, len(clients_sorted) - moved)
+                
+                for i in range(to_move):
+                    if moved < len(clients_sorted):
+                        assignments[clients_sorted[moved]] = underfull_cluster
+                        moved += 1
+                
+                if moved >= excess:
+                    break
+        
+        return assignments
+    
+    def _compute_cluster_stability(self, cluster_counts):
+        """Compute stability score (1.0 = perfectly balanced)."""
+        if not cluster_counts or len(cluster_counts) < 2:
+            return 0.0
+        
+        counts = list(cluster_counts.values())
+        std_dev = np.std(counts)
+        mean_count = np.mean(counts)
+        
+        # Coefficient of variation (inverse)
+        cv = std_dev / mean_count if mean_count > 0 else float('inf')
+        stability = 1.0 / (1.0 + cv)
+        
+        return stability
+    
+    def _cosine_distance(self, a, b):
+        """Cosine distance with numerical stability."""
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        
+        if norm_a < 1e-10 or norm_b < 1e-10:
+            return 1.0
+        
+        similarity = np.dot(a, b) / (norm_a * norm_b)
+        return 1.0 - np.clip(similarity, -1.0, 1.0)
+
 
     def configure_evaluate(
       self, server_round: int, parameters: Parameters, client_manager: ClientManager

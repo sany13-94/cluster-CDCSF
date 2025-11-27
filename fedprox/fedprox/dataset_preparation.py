@@ -77,18 +77,16 @@ class SameModalityDomainShift:
         'contrast_scale': 1.0,
         'brightness_shift': 0.0,
     },
-    1: {  # Mid-Range Equipment
-        'name': 'mid_range',
-        'noise_level': 0.08,        # Reduced from 0.15
-        'contrast_scale': 0.75,     # Reduced from 0.7
-        'brightness_shift': 0.15,   # Reduced from 0.3
+     1: {  # Mid-Range  
+        'noise_level': 0.25,        # Increased from 0.08
+        'contrast_scale': 0.55,     # Decreased from 0.75
+        'brightness_shift': 0.40,   # Increased from 0.15
     },
-    2: {  # Older Model Equipment
-        'name': 'older_model',
-        'noise_level': 0.15,        # Keep or slightly reduce
-        'contrast_scale': 0.60,     # Increased from 0.5
-        'brightness_shift': 0.20,   # CRITICAL: Reduced from 0.5
-    }
+    2: {  # Older Model
+        'noise_level': 0.40,        # Increased from 0.15
+        'contrast_scale': 0.35,     # Decreased from 0.60
+        'brightness_shift': 0.60,   # Increased from 0.20
+    },
 }
         
         # Get profile for this domain (with fallback to high-end)
@@ -104,15 +102,7 @@ class SameModalityDomainShift:
         return characteristics
     
     def apply_transform(self, img: torch.Tensor) -> torch.Tensor:
-        """
-        Apply domain shift transformation to image.
         
-        Args:
-            img: Input image tensor in range [0, 1]
-            
-        Returns:
-            Transformed image tensor
-        """
         # Domain 0 (high-end) remains unchanged
         if self.domain_id == 0:
             return img
