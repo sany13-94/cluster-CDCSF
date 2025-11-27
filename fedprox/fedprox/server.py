@@ -360,6 +360,7 @@ class GPAFStrategy(FedAvg):
       for client_proxy, fit_res in results:
         metrics = fit_res.metrics or {}
         cid = metrics.get("client_cid", None)
+        uuid = client_proxy.cid 
         
         if cid is None:
             continue
@@ -370,7 +371,7 @@ class GPAFStrategy(FedAvg):
             cid_int = cid
         
         # Get cluster assignment from E-step
-        cluster_id = client_cluster_assignments.get(cid_int, -1)
+        cluster_id = client_cluster_assignments.get(uuid, -1)
         print(f"[DEBUG] Looking for client {cid_int} (type: {type(cid_int)})")
 
         print(f'client ass {client_cluster_assignments}')
