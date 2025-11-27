@@ -97,7 +97,7 @@ class GPAFStrategy(FedAvg):
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
         #clusters parameters
-        self.warmup_rounds = 1 # Stage 20 duration
+        self.warmup_rounds = 20 # Stage 20 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
@@ -152,10 +152,7 @@ class GPAFStrategy(FedAvg):
             true_domain_labels=true_domain_labels
         )
         # Tracking
-        self.training_times = {}
-        self.selection_counts = {}
-        self.participated_clients = set()
-        self.client_assignments = {}
+       
         self.participated_clients = set()
         self.client_assignments = {}
         self.cluster_prototypes = {}
@@ -178,7 +175,7 @@ class GPAFStrategy(FedAvg):
         method_name="CDCSF"
 
         # Store ground truth straggler labels
-        self.ground_truth_stragglers = ground_truth_stragglers  # Set of client IDs
+        #self.ground_truth_stragglers = ground_truth_stragglers  # Set of client IDs
         
         # NEW/MODIFIED FAIRNESS ATTRIBUTES
       
@@ -534,8 +531,8 @@ class GPAFStrategy(FedAvg):
                     self.uuid_to_cid[uuid] = lid
                     self.cid_to_uuid[lid] = uuid
 
-                node = metrics.get("flower_node_id")
-                print(f"=== logical_id: {logical_id}, lid: {lid}, uuid: {uuid}, node: {node} ===")
+                # = metrics.get("flower_node_id")
+                #print(f"=== logical_id: {logical_id}, lid: {lid}, uuid: {uuid}, node: {node} ===")
 
                 # Participation counts and sets (by logical id)
                 if lid is not None:
@@ -585,7 +582,7 @@ class GPAFStrategy(FedAvg):
             self.total_rounds_completed = server_round
 
             # Validate straggler predictions (uses logical ids now)
-            self._validate_straggler_predictions(server_round, results)
+            #self._validate_straggler_predictions(server_round, results)
 
             print(f"\n[Round {server_round}] Participants (logical ids): {list(current_participants)}")
             if current_round_durations:
@@ -616,11 +613,7 @@ class GPAFStrategy(FedAvg):
         client_cluster_assignments=self.current_round_assignments
     )
 
-            # Save checkpoint periodically
-            if server_round % self.save_every == 0:
-                metrics_aggregated = {}
-                self._save_checkpoint(server_round, aggregated_params, metrics_aggregated)
-
+           
             # Finalization at last round
             # AFTER TRAINING, LOG WITH CLUSTER INFO
             
@@ -1085,7 +1078,7 @@ class GPAFStrategy(FedAvg):
 
         elif progress < 0.8:
             # Middle phase (20-80%): Balanced approach
-            alpha_1, alpha_2 = 0.8, 0.2
+            alpha_1, alpha_2 = 0.5, 0.5
         
    
         else:
@@ -1635,8 +1628,8 @@ class GPAFStrategy(FedAvg):
                 client_proxy = all_clients[uuid]
                 client_config = {
                     "server_round": effective_round,
-                    "simulate_stragglers": "0,1,2",
-                    "delay_base_sec": 20.0,
+                    "simulate_stragglers": "0,1",
+                    "delay_base_sec": 10.0,
                     "delay_jitter_sec": 3.0,
                     "delay_prob": 1.0,
                 }
