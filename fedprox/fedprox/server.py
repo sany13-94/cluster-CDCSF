@@ -606,7 +606,7 @@ class GPAFStrategy(FedAvg):
             self._log_prototypes_with_clusters(
         server_round,
         results,
-        client_cluster_assignments=self.client_assignments
+        client_cluster_assignments=cluster_assignments
     )
 
             # Save checkpoint periodically
