@@ -161,7 +161,7 @@ class GPAFStrategy(FedAvg):
         self.cluster_prototypes = {}
         self.last_round_participants = set()
         self.cluster_assignment_history = defaultdict(dict)
-
+        self.current_round_assignments={}
         # Virtual cluster configuration
         self.use_virtual_cluster = True  # Enable virtual cluster for never-participated clients
         ema_alpha: float = 0.3  # EMA smoothing for training times
