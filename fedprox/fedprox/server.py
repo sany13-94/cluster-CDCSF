@@ -1871,23 +1871,70 @@ class GPAFStrategy(FedAvg):
 
  
     def _initialize_clusters(self, prototypes_list):
-      """Initialize cluster prototypes using k-means++ style initialization"""
+      """
+      Initialize cluster prototypes using k-means++ style initialization.
+    
+      FIXED: Handles prototypes with inconsistent dimensions and None values.
+      """
       import numpy as np
     
       # Convert prototypes to vectors
       proto_vectors = []
-      for prototypes in prototypes_list:
-        all_protos = []
-        for class_id in sorted(prototypes.keys()):
-            all_protos.append(prototypes[class_id])
-        if all_protos:
-            proto_vectors.append(np.concatenate(all_protos))
     
+      for client_idx, prototypes in enumerate(prototypes_list):
+        all_protos = []
+        
+        for class_id in sorted(prototypes.keys()):
+            proto = prototypes[class_id]
+            
+            # ✅ FIX 1: Skip None prototypes
+            if proto is None:
+                continue
+            
+            # ✅ FIX 2: Convert to numpy array
+            if hasattr(proto, 'numpy'):
+                proto_np = proto.numpy()
+            elif hasattr(proto, 'detach'):
+                proto_np = proto.detach().cpu().numpy()
+            else:
+                proto_np = np.array(proto)
+            
+            # ✅ FIX 3: Ensure it's at least 1D
+            if proto_np.ndim == 0:
+                proto_np = np.array([proto_np])
+            
+            # ✅ FIX 4: Flatten if multi-dimensional
+            proto_np = proto_np.flatten()
+            
+            all_protos.append(proto_np)
+        
+        # ✅ FIX 5: Only add if we have valid prototypes
+        if all_protos:
+            try:
+                concatenated = np.concatenate(all_protos)
+                proto_vectors.append(concatenated)
+            except Exception as e:
+                print(f"[WARNING] Client {client_idx}: Failed to concatenate prototypes: {e}")
+                # Debug info
+                print(f"  Prototype shapes: {[p.shape for p in all_protos]}")
+                print(f"  Prototype types: {[type(p) for p in all_protos]}")
+                continue
+    
+      # ✅ FIX 6: Check if we have enough vectors
       if not proto_vectors:
+        print("[ERROR] No valid prototype vectors found!")
         return {}
-      #nn
+    
+      if len(proto_vectors) < self.num_clusters:
+        print(f"[WARNING] Only {len(proto_vectors)} valid prototypes, need {self.num_clusters}")
+        print(f"  Using available prototypes for initialization")
+    
+      # Convert to numpy array
       proto_array = np.array(proto_vectors)
       n_samples = len(proto_array)
+    
+      print(f"[k-means++] Initializing with {n_samples} prototype vectors")
+      print(f"  Vector shape: {proto_array[0].shape}")
     
       # k-means++ initialization
       centers_idx = [np.random.randint(n_samples)]
@@ -1900,8 +1947,9 @@ class GPAFStrategy(FedAvg):
         ])
         
         if distances.sum() == 0:
+            print("[WARNING] All distances are zero, breaking initialization")
             break
-            
+        
         probs = distances / distances.sum()
         next_center = np.random.choice(n_samples, p=probs)
         centers_idx.append(next_center)
@@ -1911,7 +1959,10 @@ class GPAFStrategy(FedAvg):
       for k, idx in enumerate(centers_idx):
         cluster_prototypes[k] = prototypes_list[idx]
     
+      print(f"[k-means++] Initialized {len(cluster_prototypes)} cluster centers")
+    
       return cluster_prototypes
+
 
     
     def _e_step(self, all_prototypes, client_ids):
