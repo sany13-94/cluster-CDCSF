@@ -227,83 +227,107 @@ def _get_partition_targets(partition):
     return targets[indices]
 
 
-def visualize_non_iid_bar(
+def visualize_non_iid_stacked_by_domain(
     client_partitions,
     num_classes,
+    domain_assignment,
     class_names=None,
     normalize=True,
-    figsize=(16, 8),
-    cols=4,
-    domain_assignment=None,
+    figsize_per_client=0.6,
+    row_height=4.0,
     output_path=None,
     show=True,
     test_partition=None,
     test_domain_id=None,
 ):
     """
-    Visualizes class distribution across clients using bar plots,
-    and optionally includes the test client.
+    One stacked bar per client, grouped by domain (one row per domain).
 
     Args:
-        client_partitions: list of datasets/subsets for training clients.
-        test_partition: optional dataset/subset for the test client.
-        test_domain_id: domain id for the test client (optional).
+        client_partitions: list of train client datasets/subsets.
+        num_classes: number of classes.
+        domain_assignment: list of domain ids for each train client.
+        class_names: optional list of length num_classes.
+        normalize: True -> % per client, False -> raw counts.
+        figsize_per_client: width contribution per client for the figure.
+        row_height: height per domain row.
+        output_path: if not None, save figure here.
+        show: if True, plt.show(); otherwise close.
+        test_partition: optional test dataset to append as extra client.
+        test_domain_id: domain id for test client (e.g. 3).
     """
-    # Build final list of partitions
+    # Build combined list of partitions + domains
     partitions = list(client_partitions)
-    domains = list(domain_assignment) if domain_assignment is not None else None
+    domains = list(domain_assignment)
 
-    # Append test client if provided
     if test_partition is not None:
         partitions.append(test_partition)
-        if domains is not None:
-            domains.append(test_domain_id)
+        domains.append(test_domain_id)
 
     num_clients = len(partitions)
-    rows = int(np.ceil(num_clients / cols))
 
-    if class_names is None:
-        class_names = [f"C{i}" for i in range(num_classes)]
-
-    fig, axes = plt.subplots(rows, cols, figsize=figsize, squeeze=False)
-    axes = axes.flatten()
-
-    for client_id, partition in enumerate(partitions):
-        targets = _get_partition_targets(partition)
+    # Compute class distribution per client
+    dist_matrix = np.zeros((num_clients, num_classes), dtype=float)  # [client, class]
+    for cid, part in enumerate(partitions):
+        targets = _get_partition_targets(part)
         counts = np.bincount(targets, minlength=num_classes)
-
         if normalize:
             total = counts.sum()
-            values = counts / total * 100 if total > 0 else np.zeros_like(counts)
-            ylabel = "Percentage (%)"
+            if total > 0:
+                dist_matrix[cid] = counts / total * 100.0
         else:
-            values = counts
-            ylabel = "Count"
+            dist_matrix[cid] = counts
 
-        ax = axes[client_id]
-        ax.bar(range(num_classes), values, edgecolor="black")
+    if class_names is None:
+        class_names = [f"class_{i}" for i in range(num_classes)]
 
-        # Title with domain assignment
-        if domains is not None and client_id < len(domains):
-            dom_id = domains[client_id]
-            ax.set_title(f"Client {client_id} (Domain {dom_id})")
-        else:
-            ax.set_title(f"Client {client_id}")
+    # One row per domain
+    unique_domains = sorted(set(domains))
+    n_domains = len(unique_domains)
 
-        ax.set_xticks(range(num_classes))
-        ax.set_xticklabels(class_names, rotation=45)
+    fig_width = max(8.0, num_clients * figsize_per_client)
+    fig_height = max(row_height, n_domains * row_height)
+    fig, axes = plt.subplots(
+        n_domains, 1, figsize=(fig_width, fig_height), squeeze=False
+    )
+    axes = axes.flatten()
+
+    for ax_idx, dom in enumerate(unique_domains):
+        ax = axes[ax_idx]
+        # clients belonging to this domain
+        client_ids = [i for i, d in enumerate(domains) if d == dom]
+        data = dist_matrix[client_ids]  # shape: [n_clients_dom, num_classes]
+        x = np.arange(len(client_ids))
+
+        bottom = np.zeros(len(client_ids))
+        for c in range(num_classes):
+            vals = data[:, c]
+            ax.bar(x, vals, bottom=bottom, label=class_names[c])
+            bottom += vals
+
+        # x tick labels: client ids (mark test client if last one)
+        xticklabels = []
+        for idx, cid in enumerate(client_ids):
+            label = f"C{cid}"
+            xticklabels.append(label)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(xticklabels, rotation=45)
+        ylabel = "Percentage (%)" if normalize else "Count"
         ax.set_ylabel(ylabel)
-        ax.set_ylim(0, max(values) * 1.2 if values.max() > 0 else 1)
+        ax.set_title(f"Domain {dom} – clients: {client_ids}")
+        if normalize:
+            ax.set_ylim(0, 100.0)
 
-    # Hide empty axes
-    for i in range(num_clients, len(axes)):
-        axes[i].axis("off")
+    # Add legend only once (top-right)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, title="Classes", loc="upper right")
 
-    plt.tight_layout()
+    plt.tight_layout(rect=(0, 0, 0.9, 1))  # leave space on the right for legend
 
     if output_path is not None:
         plt.savefig(output_path, bbox_inches="tight")
-        print(f"Saved visualization to: {output_path}")
+        print(f"Saved stacked non-IID visualization to: {output_path}")
 
     if show:
         plt.show()
@@ -461,18 +485,19 @@ def make_pathmnist_clients_with_domains(
     NUM_CLASSES = 9  # PathMNIST
     CLASS_NAMES = [f"class_{i}" for i in range(NUM_CLASSES)]  # or real names
 
-    visualize_non_iid_bar(
+
+    visualize_non_iid_stacked_by_domain(
     client_partitions=raw_train_partitions,
-    num_classes=9,         # PathMNIST has 9 classes
-    class_names=[f"class_{i}" for i in range(9)],
-    normalize=True,
-    figsize=(22, 12),
-    cols=5,
+    num_classes=NUM_CLASSES,
     domain_assignment=domain_assignment,
-    test_partition=trn_test_base,      # add the test dataset
-    test_domain_id=3,                  # or 0 if test domain should be unshifted
-    output_path="non_iid_with_test.png",
-    show=True
+    class_names=CLASS_NAMES,
+    normalize=True,  # percentages
+    figsize_per_client=0.5,
+    row_height=4.0,
+    test_partition=trn_test_base,    # include test as extra client
+    test_domain_id=3,                # or 0 if you consider it high-end
+    output_path="pathmnist_non_iid_stacked_by_domain.png",
+    show=True,
 )
 
     # domain_assignment + [3] : last id is test client domain
