@@ -1431,7 +1431,7 @@ class GPAFStrategy(FedAvg):
                     print("  Initializing cluster prototypes with k-means++...")
                     self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
 
-                global_assignments = self.e_step(all_prototypes_list, all_client_ids)
+                global_assignments = self._e_step(all_prototypes_list, all_client_ids)
                 self.cluster_prototypes = self._m_step(
                     all_prototypes_list,
                     all_client_ids,
