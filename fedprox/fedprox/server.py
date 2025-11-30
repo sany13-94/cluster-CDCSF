@@ -103,7 +103,8 @@ class GPAFStrategy(FedAvg):
         self.clustering_interval = 8
         # Simple participation counter
         self.client_participation_count = {}  # client_id -> number of times selected
-        
+        self.cluster_assignment_history = defaultdict(dict)
+
         # Initialize as empty dictionaries
         self.cluster_prototypes = {i: {} for i in range(self.num_clusters)}
         self.cluster_class_counts = {i: defaultdict(int) for i in range(self.num_clusters)}
@@ -134,7 +135,6 @@ class GPAFStrategy(FedAvg):
         self.selection_counts = defaultdict(int)
         self.accuracy_history = defaultdict(float)
         self._current_accuracies = {}
-        self.cluster_assignment_history= {}
         # ... existing initialization ...
         # Core parameters from corrected methodology
 
@@ -368,7 +368,7 @@ class GPAFStrategy(FedAvg):
             cid_int = cid
         
         # Get cluster assignment from E-step
-        cluster_id = client_cluster_assignments.get(uuid, -1)
+        cluster_id = client_cluster_assignments.get(cid_int, -1)
         print(f"[DEBUG] Looking for client {cid_int} (type: {type(cid_int)})")
 
         print(f'client ass {client_cluster_assignments}')
