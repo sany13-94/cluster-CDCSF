@@ -258,7 +258,6 @@ class GPAFStrategy(FedAvg):
         self.expected_unique = expected_unique
         self.proto_cluster_rows = []  # For CSV export
 
-
         # Track what we've already recorded: logical_id values
         self._seen = set()
         if self.map_path.exists():
@@ -368,7 +367,7 @@ class GPAFStrategy(FedAvg):
             cid_int = cid
         
         # Get cluster assignment from E-step
-        cluster_id = client_cluster_assignments.get(cid_int, -1)
+        cluster_id = client_cluster_assignments.get(uuid, -1)
         print(f"[DEBUG] Looking for client {cid_int} (type: {type(cid_int)})")
 
         print(f'client ass {client_cluster_assignments}')
