@@ -1430,7 +1430,7 @@ class GPAFStrategy(FedAvg):
                     print("  Initializing cluster prototypes with k-means++...")
                     self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
 
-                global_assignments = self.e_step_robust(all_prototypes_list, all_client_ids)
+                global_assignments = self.e_step(all_prototypes_list, all_client_ids)
                 self.cluster_prototypes = self._m_step(
                     all_prototypes_list,
                     all_client_ids,
@@ -1912,7 +1912,7 @@ class GPAFStrategy(FedAvg):
     
       return cluster_prototypes
 
-    '''
+    
     def _e_step(self, all_prototypes, client_ids):
       """E-step: Assign clients to clusters based on prototype similarity"""
       assignments = {}
@@ -2083,7 +2083,7 @@ class GPAFStrategy(FedAvg):
         self.cluster_stability_scores.append(stability)
         
         return assignments
-    
+    '''
     def _compute_cluster_entropy(self, cluster_counts, total_clients):
         """Compute entropy of cluster distribution (higher = more balanced)."""
         if total_clients == 0:
