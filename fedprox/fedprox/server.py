@@ -1374,8 +1374,9 @@ class GPAFStrategy(FedAvg):
         # PHASE 1: CLUSTERING (unchanged logic, still uses UUIDs)
         # =================================================================
         clusters = defaultdict(list)
+        #server_round % 1 != 0 and 
 
-        if server_round % 1 != 0 and participated_available and not in_warmup_phase:
+        if participated_available and not in_warmup_phase:
             print(f"\n{'─'*80}")
             print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
 
