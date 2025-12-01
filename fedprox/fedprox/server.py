@@ -1958,7 +1958,7 @@ class GPAFStrategy(FedAvg):
       for k, idx in enumerate(centers_idx):
         cluster_prototypes[k] = prototypes_list[idx]
     
-      print(f"[k-means++] Initialized {len(cluster_prototypes)} cluster centers")
+      print(f"[k-means++]  Initialized {len(cluster_prototypes)} cluster centers")
     
       return cluster_prototypes
 
