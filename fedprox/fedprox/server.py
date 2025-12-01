@@ -1873,96 +1873,77 @@ class GPAFStrategy(FedAvg):
  
     def _initialize_clusters(self, prototypes_list):
       """
-      Initialize cluster prototypes using k-means++ style initialization.
-    
-      FIXED: Handles prototypes with inconsistent dimensions and None values.
+      Robust cluster initialization:
+      - Handles missing classes
+      - Ensures consistent dimensions
+      - Prepares input for k-means++ or EM
       """
       import numpy as np
-    
-      # Convert prototypes to vectors
+
+      # Determine feature_dim from first valid prototype
+      feature_dim = None
+      for prototypes in prototypes_list:
+        for proto in prototypes.values():
+            if proto is not None:
+                feature_dim = proto.flatten().shape[0]
+                break
+        if feature_dim is not None:
+            break
+      if feature_dim is None:
+        raise ValueError("[ERROR] No valid prototype found to determine feature_dim")
+
+      # Determine total number of classes
+      num_classes = max(len(p) for p in prototypes_list)
+
       proto_vectors = []
-    
+
       for client_idx, prototypes in enumerate(prototypes_list):
-        all_protos = []
-        
-        for class_id in sorted(prototypes.keys()):
-            proto = prototypes[class_id]
-            
-            # ✅ FIX 1: Skip None prototypes
-            if proto is None:
-                continue
-            
-            # ✅ FIX 2: Convert to numpy array
-            if hasattr(proto, 'numpy'):
-                proto_np = proto.numpy()
-            elif hasattr(proto, 'detach'):
-                proto_np = proto.detach().cpu().numpy()
+        # Initialize fixed-size matrix for all classes
+        proto_matrix = np.zeros((num_classes, feature_dim), dtype=np.float32)
+
+        for class_id in range(num_classes):
+            if class_id in prototypes and prototypes[class_id] is not None:
+                proto = prototypes[class_id]
+                if hasattr(proto, "detach"):
+                    proto = proto.detach().cpu().numpy()
+                proto_matrix[class_id, :] = proto.flatten()
             else:
-                proto_np = np.array(proto)
-            
-            # ✅ FIX 3: Ensure it's at least 1D
-            if proto_np.ndim == 0:
-                proto_np = np.array([proto_np])
-            
-            # ✅ FIX 4: Flatten if multi-dimensional
-            proto_np = proto_np.flatten()
-            
-            all_protos.append(proto_np)
-        
-        # ✅ FIX 5: Only add if we have valid prototypes
-        if all_protos:
-            try:
-                concatenated = np.concatenate(all_protos)
-                proto_vectors.append(concatenated)
-            except Exception as e:
-                print(f"[WARNING] Client {client_idx}: Failed to concatenate prototypes: {e}")
-                # Debug info
-                print(f"  Prototype shapes: {[p.shape for p in all_protos]}")
-                print(f"  Prototype types: {[type(p) for p in all_protos]}")
+                # Missing class → leave as zero vector
                 continue
-    
-      # ✅ FIX 6: Check if we have enough vectors
-      if not proto_vectors:
-        print("[ERROR] No valid prototype vectors found!")
-        return {}
-    
-      if len(proto_vectors) < self.num_clusters:
-        print(f"[WARNING] Only {len(proto_vectors)} valid prototypes, need {self.num_clusters}")
-        print(f"  Using available prototypes for initialization")
-    
-      # Convert to numpy array
-      proto_array = np.array(proto_vectors)
-      n_samples = len(proto_array)
-    
-      print(f"[k-means++] Initializing with {n_samples} prototype vectors")
-      print(f"  Vector shape: {proto_array[0].shape}")
-    
+
+        # Flatten per-client prototypes for clustering
+        proto_vectors.append(proto_matrix.flatten())
+
+      # Convert to np.array safely
+      proto_array = np.stack(proto_vectors)  # shape: (num_clients, num_classes*feature_dim)
+
+      print(f"[k-means++] Initializing with {len(proto_array)} prototype vectors")
+      print(f"  Vector length: {proto_array.shape[1]}")
+
       # k-means++ initialization
+      n_samples = len(proto_array)
       centers_idx = [np.random.randint(n_samples)]
-    
       for _ in range(min(self.num_clusters - 1, n_samples - 1)):
         distances = np.array([
-            min(np.linalg.norm(proto_array[i] - proto_array[c]) 
-                for c in centers_idx)
+            min(np.linalg.norm(proto_array[i] - proto_array[c]) for c in centers_idx)
             for i in range(n_samples)
         ])
-        
         if distances.sum() == 0:
             print("[WARNING] All distances are zero, breaking initialization")
             break
-        
         probs = distances / distances.sum()
         next_center = np.random.choice(n_samples, p=probs)
         centers_idx.append(next_center)
-    
-      # Convert back to prototype format
+
+      # Map back to cluster prototypes
       cluster_prototypes = {}
       for k, idx in enumerate(centers_idx):
         cluster_prototypes[k] = prototypes_list[idx]
-    
-      print(f"[k-means++]  Initialized {len(cluster_prototypes)} cluster centers")
-    
+
+      print(f"[k-means++] Initialized {len(cluster_prototypes)} cluster centers")
+
       return cluster_prototypes
+
 
 
     '''
