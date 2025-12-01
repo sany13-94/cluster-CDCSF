@@ -232,6 +232,7 @@ class GPAFStrategy(FedAvg):
         self.num_domains = self.min_fit_clients
         self.batch_size=batch_size
         self.save_dir="visualizations"
+        self.cluster_stability_scores = []
         
         print(f'num domain : {self.min_fit_clients}')
        
