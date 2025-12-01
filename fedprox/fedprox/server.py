@@ -98,7 +98,7 @@ class GPAFStrategy(FedAvg):
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
         #clusters parameters
-        self.warmup_rounds = 20 # Stage 20 duration
+        self.warmup_rounds = 50 # Stage 20 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
@@ -1073,15 +1073,10 @@ class GPAFStrategy(FedAvg):
         print(f'ss {server_round} and ee {self.total_rounds}')
         progress = server_round / self.total_rounds
         
-        if progress < 0.4 :
+        if progress < 0.6 :
           # Early phase (0-20%): Prioritize reliability for stable initial model
           alpha_1, alpha_2 = 0.8, 0.2
-
-        elif progress < 0.8:
-            # Middle phase (20-80%): Balanced approach
-            alpha_1, alpha_2 = 0.5, 0.5
-        
-   
+         
         else:
             # Late phase (80-100%): Prioritize fairness for comprehensive coverage
             alpha_1, alpha_2 = 0.3, 0.7
