@@ -1965,42 +1965,118 @@ class GPAFStrategy(FedAvg):
 
     
     def _e_step(self, all_prototypes, client_ids):
-      """E-step: Assign clients to clusters based on prototype similarity"""
+      """
+      E-step: Assign clients to clusters based on prototype similarity.
+    
+      FIXED: Handles None values and validates prototypes properly.
+      """
       assignments = {}
     
       print(f"[E-step] Assigning {len(client_ids)} clients to {len(self.cluster_prototypes)} clusters")
     
+      # ✅ Validate cluster prototypes exist
+      if not self.cluster_prototypes:
+        print("[ERROR] No cluster prototypes available!")
+        # Fallback: assign all to cluster 0
+        for client_id in client_ids:
+            assignments[client_id] = 0
+        return assignments
+    
       for client_id, prototypes in zip(client_ids, all_prototypes):
+        # ✅ Validate client prototypes
+        if not isinstance(prototypes, dict):
+            print(f"[WARNING] Client {client_id}: Prototypes not a dict, assigning to cluster 0")
+            assignments[client_id] = 0
+            continue
+        
+        if not prototypes:
+            print(f"[WARNING] Client {client_id}: Empty prototypes, assigning to cluster 0")
+            assignments[client_id] = 0
+            continue
+        
         min_dist = float('inf')
         best_cluster = 0
-
+        cluster_distances = {}
+        
         for cluster_id in self.cluster_prototypes:
             total_dist = 0
             shared_classes = 0
-
+            
+            # ✅ Validate cluster prototypes
+            if not isinstance(self.cluster_prototypes[cluster_id], dict):
+                continue
+            
             for class_id in prototypes:
                 if class_id in self.cluster_prototypes[cluster_id]:
-                    client_proto = np.array(prototypes[class_id])
-                    cluster_proto = np.array(self.cluster_prototypes[cluster_id][class_id])
+                    client_proto = prototypes[class_id]
+                    cluster_proto = self.cluster_prototypes[cluster_id][class_id]
                     
+                    # ✅ Skip if either is None
+                    if client_proto is None or cluster_proto is None:
+                        continue
+                    
+                    # ✅ Convert to numpy arrays
+                    try:
+                        if hasattr(client_proto, 'numpy'):
+                            client_proto = client_proto.numpy()
+                        elif hasattr(client_proto, 'detach'):
+                            client_proto = client_proto.detach().cpu().numpy()
+                        else:
+                            client_proto = np.array(client_proto)
+                        
+                        if hasattr(cluster_proto, 'numpy'):
+                            cluster_proto = cluster_proto.numpy()
+                        elif hasattr(cluster_proto, 'detach'):
+                            cluster_proto = cluster_proto.detach().cpu().numpy()
+                        else:
+                            cluster_proto = np.array(cluster_proto)
+                    except Exception as e:
+                        print(f"[WARNING] Client {client_id}, Class {class_id}: Conversion error: {e}")
+                        continue
+                    
+                    # ✅ Validate arrays
+                    if client_proto.size == 0 or cluster_proto.size == 0:
+                        continue
+                    
+                    # Compute distance
                     dist = self._cosine_distance(client_proto, cluster_proto)
                     total_dist += dist
                     shared_classes += 1
-
-            avg_dist = total_dist / shared_classes if shared_classes > 0 else 1.0
-
+            
+            # ✅ Compute average distance
+            if shared_classes > 0:
+                avg_dist = total_dist / shared_classes
+            else:
+                # No shared classes - use maximum distance
+                avg_dist = 1.0
+            
+            cluster_distances[cluster_id] = avg_dist
+            
             if avg_dist < min_dist:
                 min_dist = avg_dist
                 best_cluster = cluster_id
-
+        
+        # ✅ Fallback if no valid distances computed
+        if not cluster_distances:
+            print(f"[WARNING] Client {client_id}: No valid distances, assigning to cluster 0")
+            best_cluster = 0
+        
         assignments[client_id] = best_cluster
-
+    
       # Log cluster distribution
       cluster_counts = defaultdict(int)
       for cluster_id in assignments.values():
         cluster_counts[cluster_id] += 1
     
       print(f"[E-step] Distribution: {dict(cluster_counts)}")
+    
+      # ✅ Warn if imbalanced
+      if cluster_counts:
+        max_count = max(cluster_counts.values())
+        total = len(assignments)
+        if max_count > total * 0.7:
+            print(f"[WARNING] Cluster imbalance detected! Cluster {max(cluster_counts, key=cluster_counts.get)} has {max_count}/{total} clients")
+    
       return assignments
 
 
