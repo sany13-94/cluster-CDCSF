@@ -1453,7 +1453,7 @@ class GPAFStrategy(FedAvg):
                                        if clust == cluster_id]
                     if cluster_clients:
                         print(f"  Cluster {cluster_id}: {len(cluster_clients)} clients")
-
+                """
                 if len(all_prototypes_list) >= self.num_clusters:
                     self._visualize_clusters(
                         prototypes=all_prototypes_list,
@@ -1461,6 +1461,7 @@ class GPAFStrategy(FedAvg):
                         server_round=server_round,
                         true_domain_map=None
                     )
+                """
 
             else:
                 self.current_round_assignments = self.client_assignments.copy()
