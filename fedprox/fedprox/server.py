@@ -2003,15 +2003,6 @@ class GPAFStrategy(FedAvg):
       print(f"[E-step] Distribution: {dict(cluster_counts)}")
       return assignments
 
-    def _cosine_distance(self, a, b):
-      """Compute 1 - cosine similarity"""
-      norm_a = np.linalg.norm(a)
-      norm_b = np.linalg.norm(b)
-    
-      if norm_a == 0 or norm_b == 0:
-        return 1.0
-    
-      return 1 - np.dot(a, b) / (norm_a * norm_b)
 
 
     def _m_step(self, all_prototypes, client_ids, assignments, class_counts_list):
