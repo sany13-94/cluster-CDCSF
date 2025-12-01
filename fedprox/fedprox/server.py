@@ -51,7 +51,8 @@ from flwr.server.strategy import Strategy
 from flwr.server.client_manager import ClientManager
 import os
 from fedprox.visualizeprototypes import ClusterVisualizationForConfigureFit
-
+from sklearn.metrics import silhouette_score
+from scipy.stats import entropy
 from flwr.common import (
     EvaluateIns,
     EvaluateRes,
@@ -1430,7 +1431,7 @@ class GPAFStrategy(FedAvg):
                     print("  Initializing cluster prototypes with k-means++...")
                     self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
 
-                global_assignments = self._e_step(all_prototypes_list, all_client_ids)
+                global_assignments = self.e_step_robust(all_prototypes_list, all_client_ids)
                 self.cluster_prototypes = self._m_step(
                     all_prototypes_list,
                     all_client_ids,
@@ -1963,7 +1964,7 @@ class GPAFStrategy(FedAvg):
       return cluster_prototypes
 
 
-    
+    '''
     def _e_step(self, all_prototypes, client_ids):
       """
       E-step: Assign clients to clusters based on prototype similarity.
@@ -2079,7 +2080,7 @@ class GPAFStrategy(FedAvg):
     
       return assignments
 
-
+    '''
 
     def _m_step(self, all_prototypes, client_ids, assignments, class_counts_list):
       """M-step: Update cluster prototypes with weighted averaging"""
@@ -2139,7 +2140,7 @@ class GPAFStrategy(FedAvg):
 
       print(f"[M-step] Updated {len(new_clusters)} cluster prototypes")
       return new_clusters
-    '''
+   
     def e_step_robust(self, all_prototypes, client_ids, regularization_weight=0.2):
         """
         E-step with multiple enhancements:
@@ -2201,7 +2202,7 @@ class GPAFStrategy(FedAvg):
         self.cluster_stability_scores.append(stability)
         
         return assignments
-    '''
+   
     def _compute_cluster_entropy(self, cluster_counts, total_clients):
         """Compute entropy of cluster distribution (higher = more balanced)."""
         if total_clients == 0:
