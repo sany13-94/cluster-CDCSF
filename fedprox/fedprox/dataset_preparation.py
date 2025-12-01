@@ -78,15 +78,15 @@ class SameModalityDomainShift:
     },
     1: {  # Mid-Range Equipment
         'name': 'mid_range',
-        'noise_level': 0.08,        # Reduced from 0.15
-        'contrast_scale': 0.75,     # Reduced from 0.7
-        'brightness_shift': 0.15,   # Reduced from 0.3
+        'noise_level': 0.25,        # Increased from 0.08
+        'contrast_scale': 0.55,     # Decreased from 0.75
+        'brightness_shift': 0.40,   # Increased from 0.15
     },
     2: {  # Older Model Equipment
         'name': 'older_model',
-        'noise_level': 0.15,        # Keep or slightly reduce
-        'contrast_scale': 0.60,     # Increased from 0.5
-        'brightness_shift': 0.20,   # CRITICAL: Reduced from 0.5
+        'noise_level': 0.40,        # Increased from 0.15
+        'contrast_scale': 0.35,     # Decreased from 0.60
+        'brightness_shift': 0.60,   # Increased from 0.20
     }
 }
         
