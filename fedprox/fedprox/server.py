@@ -2209,15 +2209,65 @@ class GPAFStrategy(FedAvg):
         return stability
     
     def _cosine_distance(self, a, b):
-        """Cosine distance with numerical stability."""
-        norm_a = np.linalg.norm(a)
-        norm_b = np.linalg.norm(b)
+      """
+      Compute 1 - cosine similarity with proper None handling.
+    
+      FIXED: Validates inputs before computation.
+      """
+      # ✅ FIX 1: Check for None
+      if a is None or b is None:
+        return 1.0  # Maximum distance
+    
+      # ✅ FIX 2: Convert to numpy arrays
+      try:
+        if hasattr(a, 'numpy'):
+            a = a.numpy()
+        elif hasattr(a, 'detach'):
+            a = a.detach().cpu().numpy()
+        else:
+            a = np.array(a)
         
-        if norm_a < 1e-10 or norm_b < 1e-10:
-            return 1.0
-        
+        if hasattr(b, 'numpy'):
+            b = b.numpy()
+        elif hasattr(b, 'detach'):
+            b = b.detach().cpu().numpy()
+        else:
+            b = np.array(b)
+      except Exception as e:
+        print(f"[WARNING] Conversion error in cosine_distance: {e}")
+        return 1.0
+    
+      # ✅ FIX 3: Check for empty or invalid arrays
+      if a.size == 0 or b.size == 0:
+        return 1.0
+    
+      # ✅ FIX 4: Flatten if multi-dimensional
+      a = a.flatten()
+      b = b.flatten()
+    
+      # ✅ FIX 5: Check dimensions match
+      if a.shape != b.shape:
+        print(f"[WARNING] Shape mismatch: {a.shape} vs {b.shape}")
+        return 1.0
+    
+      # ✅ FIX 6: Compute norms safely
+      norm_a = np.linalg.norm(a)
+      norm_b = np.linalg.norm(b)
+    
+      # ✅ FIX 7: Handle zero norms
+      if norm_a < 1e-10 or norm_b < 1e-10:
+        return 1.0
+    
+      # ✅ FIX 8: Compute cosine similarity
+      try:
         similarity = np.dot(a, b) / (norm_a * norm_b)
-        return 1.0 - np.clip(similarity, -1.0, 1.0)
+        # Clip to [-1, 1] for numerical stability
+        similarity = np.clip(similarity, -1.0, 1.0)
+        return 1.0 - similarity
+      except Exception as e:
+        print(f"[WARNING] Computation error in cosine_distance: {e}")
+        return 1.0
+
 
 
     def configure_evaluate(
