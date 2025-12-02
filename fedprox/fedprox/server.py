@@ -100,7 +100,7 @@ class GPAFStrategy(FedAvg):
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
         #clusters parameters
-        self.warmup_rounds = 1 # Stage 20 duration
+        self.warmup_rounds = 40 # Stage 20 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
