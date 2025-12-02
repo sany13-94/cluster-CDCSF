@@ -8,6 +8,8 @@ import base64
 import pickle
 import datetime
 import time
+import random  # at top of file if not already
+
 from numpy.linalg import norm
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib import cm
@@ -192,6 +194,13 @@ class GPAFStrategy(FedAvg):
         self.alpha = 0.3  # EMA decay for training time
         self.epsilon = 0.1  # straggler tolerance (10% of T_max)
         # EMA Training Time Tracking
+
+
+        # For stochastic selection
+        self.lambda_factor = 2.0      # controls size of candidate pool: top-λK
+        self.eps_explore = 0.10       # ε for ε-greedy (10% of rounds do exploration)
+        
+
         self.ema_alpha = ema_alpha
         self.training_times = {}  # T_c(i) - EMA of training times
         
@@ -1575,17 +1584,24 @@ class GPAFStrategy(FedAvg):
         # =================================================================
         # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER (UUIDs, but log with LIDs)
         # =================================================================
+        # =================================================================
+        # PHASE 5: SELECT CLIENTS FROM EACH CLUSTER (UUIDs, but log with LIDs)
+        # =================================================================
         print(f"\n{'─'*80}")
         print(f"[Client Selection]")
         print(f"{'─'*80}")
 
         selected_clients_uuids: List[str] = []
 
+        # ε-greedy + top-λK sampling
+        lambda_factor = getattr(self, "lambda_factor", 2.0)
+        eps_explore = getattr(self, "eps_explore", 0.10)
+
         for cluster_id in sorted(clusters.keys()):
             cluster_clients = clusters[cluster_id]
             allocation = cluster_allocations.get(cluster_id, 0)
 
-            if allocation == 0:
+            if allocation == 0 or len(cluster_clients) == 0:
                 continue
 
             cluster_type = "Unified Pool" if in_warmup_phase else (
@@ -1594,18 +1610,53 @@ class GPAFStrategy(FedAvg):
 
             print(f"\n[Cluster {cluster_id} - type: {cluster_type}]")
 
+            # Sort by score (for exploitation branch)
             cluster_clients_sorted = sorted(
                 cluster_clients,
                 key=lambda uuid: all_scores.get(uuid, 0.0),
                 reverse=True
             )
 
+            # How many we actually want to select from this cluster
             num_to_select = min(allocation, len(cluster_clients_sorted))
-            cluster_selection = cluster_clients_sorted[:num_to_select]
+            if num_to_select <= 0:
+                print("  No clients to select in this cluster (num_to_select=0)")
+                continue
+
+            # ε-greedy decision: exploration vs exploitation
+            rand_val = random.random()
+            if rand_val < eps_explore:
+                # ---------------------------------------------------------
+                # EXPLORATION: pick num_to_select random clients from
+                # the entire cluster, ignoring scores.
+                # ---------------------------------------------------------
+                print(f"  [EXPLORATION] ε={eps_explore:.2f}, rand={rand_val:.3f}")
+                # ensure we don't sample more than available
+                cluster_selection = random.sample(cluster_clients, num_to_select)
+
+            else:
+                # ---------------------------------------------------------
+                # EXPLOITATION: pick from top-λK, but randomly within that set
+                # ---------------------------------------------------------
+                print(f"  [EXPLOITATION] ε={eps_explore:.2f}, rand={rand_val:.3f}")
+                # Candidate pool size = top λ * num_to_select
+                candidate_count = int(lambda_factor * num_to_select)
+                candidate_count = min(candidate_count, len(cluster_clients_sorted))
+                candidate_count = max(candidate_count, num_to_select)  # at least num_to_select
+
+                candidates = cluster_clients_sorted[:candidate_count]
+
+                # Randomly sample num_to_select from these top candidates
+                if candidate_count <= num_to_select:
+                    # not enough candidates, take them all
+                    cluster_selection = candidates
+                else:
+                    cluster_selection = random.sample(candidates, num_to_select)
+
             selected_clients_uuids.extend(cluster_selection)
 
             print(f"Selected {len(cluster_selection)}/{len(cluster_clients)} clients")
-
+            # Logging a few selected clients with details
             for i, uuid in enumerate(cluster_selection[:5]):
                 score = all_scores.get(uuid, 0.0)
                 lid = uuid_to_lid.get(uuid)
