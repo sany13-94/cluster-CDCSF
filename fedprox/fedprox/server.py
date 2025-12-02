@@ -98,7 +98,7 @@ class GPAFStrategy(FedAvg):
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
         #clusters parameters
-        self.warmup_rounds = 20 # Stage 20 duration
+        self.warmup_rounds = 1 # Stage 20 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
@@ -163,7 +163,7 @@ class GPAFStrategy(FedAvg):
         # Virtual cluster configuration
         self.use_virtual_cluster = True  # Enable virtual cluster for never-participated clients
         ema_alpha: float = 0.3  # EMA smoothing for training times
-        beta: float = 0.05  # Penalty strength for reliability score
+        beta: float = 0.08  # Penalty strength for reliability score
         initial_alpha1: float = 0.6  # Initial reliability weight
         initial_alpha2: float = 0.4  # Initial fairness weight
         phase_threshold: int = 20  # Round to switch weight emphasis
