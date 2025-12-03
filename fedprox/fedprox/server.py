@@ -1381,7 +1381,7 @@ class GPAFStrategy(FedAvg):
         clusters = defaultdict(list)
         #server_round % 1 != 0 and 
 
-        if participated_available and not in_warmup_phase:
+        if server_round % 2 != 0 and  participated_available and not in_warmup_phase:
             print(f"\n{'─'*80}")
             print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
 
