@@ -1080,6 +1080,7 @@ class GPAFStrategy(FedAvg):
     def _adapt_weights(self, server_round: int) -> Tuple[float, float]:
         
         print(f'ss {server_round} and ee {self.total_rounds}')
+        """
         progress = server_round / self.total_rounds
         
         if progress < 0.7 :
@@ -1089,6 +1090,22 @@ class GPAFStrategy(FedAvg):
         else:
             # Late phase (80-100%): Prioritize fairness for comprehensive coverage
             alpha_1, alpha_2 = 0.3, 0.7
+        
+        """
+        if progress < 0.3 :
+          # Early phase (0-20%): Prioritize reliability for stable initial model
+          alpha_1, alpha_2 = 1.0, 0.0
+
+        elif progress < 0.7:
+          alpha_1, alpha_2 = 0.7, 0.3
+         
+        else:
+            # Late phase (80-100%): Prioritize fairness for comprehensive coverage
+            alpha_1, alpha_2 = 0.9, 0.1
+        
+        """
+
+      
        
        
        
