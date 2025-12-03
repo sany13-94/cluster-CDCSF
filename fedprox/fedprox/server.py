@@ -1103,12 +1103,8 @@ class GPAFStrategy(FedAvg):
             # Late phase (80-100%): Prioritize fairness for comprehensive coverage
             alpha_1, alpha_2 = 0.9, 0.1
         
-        """
+       
 
-      
-       
-       
-       
         return alpha_1, alpha_2
     
     
