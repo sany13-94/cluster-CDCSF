@@ -100,7 +100,7 @@ class GPAFStrategy(FedAvg):
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
         #clusters parameters
-        self.warmup_rounds = 40 # Stage 20 duration
+        self.warmup_rounds = 20 # Stage 20 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
@@ -1082,7 +1082,7 @@ class GPAFStrategy(FedAvg):
         print(f'ss {server_round} and ee {self.total_rounds}')
         progress = server_round / self.total_rounds
         
-        if progress < 0.6 :
+        if progress < 0.7 :
           # Early phase (0-20%): Prioritize reliability for stable initial model
           alpha_1, alpha_2 = 0.8, 0.2
          
@@ -1436,7 +1436,7 @@ class GPAFStrategy(FedAvg):
                     print("  Initializing cluster prototypes with k-means++...")
                     self.cluster_prototypes = self._initialize_clusters(all_prototypes_list)
 
-                global_assignments = self.e_step_robust(all_prototypes_list, all_client_ids)
+                global_assignments = self._e_step(all_prototypes_list, all_client_ids)
                 self.cluster_prototypes = self._m_step(
                     all_prototypes_list,
                     all_client_ids,
@@ -1993,7 +1993,7 @@ class GPAFStrategy(FedAvg):
 
 
 
-    '''
+    
     def _e_step(self, all_prototypes, client_ids):
       """
       E-step: Assign clients to clusters based on prototype similarity.
@@ -2109,7 +2109,7 @@ class GPAFStrategy(FedAvg):
     
       return assignments
 
-    '''
+ 
 
     def _m_step(self, all_prototypes, client_ids, assignments, class_counts_list):
       """M-step: Update cluster prototypes with weighted averaging"""
@@ -2169,7 +2169,7 @@ class GPAFStrategy(FedAvg):
 
       print(f"[M-step] Updated {len(new_clusters)} cluster prototypes")
       return new_clusters
-   
+    '''
     def e_step_robust(self, all_prototypes, client_ids, regularization_weight=0.2):
         """
         E-step with multiple enhancements:
@@ -2231,7 +2231,7 @@ class GPAFStrategy(FedAvg):
         self.cluster_stability_scores.append(stability)
         
         return assignments
-   
+    '''
     def _compute_cluster_entropy(self, cluster_counts, total_clients):
         """Compute entropy of cluster distribution (higher = more balanced)."""
         if total_clients == 0:
