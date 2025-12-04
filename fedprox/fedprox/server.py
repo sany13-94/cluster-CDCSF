@@ -100,7 +100,7 @@ class GPAFStrategy(FedAvg):
         self.min_available_clients = min_available_clients
         self.server_url = "https://add18b7094f7.ngrok-free.app/heartbeat"
         #clusters parameters
-        self.warmup_rounds = 20 # Stage 20 duration
+        self.warmup_rounds = 30 # Stage 20 duration
         self.num_clusters = 4
         self.client_assignments = {}  # {client_id: cluster_id}
         self.clustering_interval = 8
@@ -182,7 +182,7 @@ class GPAFStrategy(FedAvg):
         
         # NEW/MODIFIED FAIRNESS ATTRIBUTES
       
-        reliability_lambda = 0.05
+        reliability_lambda = 0.07
         acc_drop_threshold  = 0.005
        
 
@@ -191,7 +191,7 @@ class GPAFStrategy(FedAvg):
 
         
         # CSMDA Hyperparameters
-        self.alpha = 0.3  # EMA decay for training time
+        self.alpha = 0.5  # EMA decay for training time
         self.epsilon = 0.1  # straggler tolerance (10% of T_max)
         # EMA Training Time Tracking
 
@@ -1099,7 +1099,7 @@ class GPAFStrategy(FedAvg):
           alpha_1, alpha_2 = 1.0, 0.0
 
         elif progress < 0.7:
-          alpha_1, alpha_2 = 0.7, 0.3
+          alpha_1, alpha_2 = 0.3, 0.7
          
         else:
             # Late phase (80-100%): Prioritize fairness for comprehensive coverage
@@ -1396,7 +1396,7 @@ class GPAFStrategy(FedAvg):
         clusters = defaultdict(list)
         #server_round % 1 != 0 and 
 
-        if server_round % 2 != 0 and  participated_available and not in_warmup_phase:
+        if server_round % 4 != 0 and  participated_available and not in_warmup_phase:
             print(f"\n{'─'*80}")
             print(f"[Clustering Round] Collecting prototypes from ALL participated clients IN ROUND {server_round}")
 
