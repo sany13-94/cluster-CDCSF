@@ -208,7 +208,6 @@ class GPAFStrategy(FedAvg):
         
         # Weight Adaptation
        
-        self.phase_threshold = phase_threshold
         #self.total_rounds = total_rounds
         
         print(f"[Init] Strategy initialized with α={ema_alpha}, β={beta}")
