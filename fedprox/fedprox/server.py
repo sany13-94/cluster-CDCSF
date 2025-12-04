@@ -1092,6 +1092,8 @@ class GPAFStrategy(FedAvg):
             alpha_1, alpha_2 = 0.3, 0.7
         
         """
+        progress = server_round / self.total_rounds
+
         if progress < 0.3 :
           # Early phase (0-20%): Prioritize reliability for stable initial model
           alpha_1, alpha_2 = 1.0, 0.0
