@@ -207,8 +207,7 @@ class GPAFStrategy(FedAvg):
         self.total_rounds_completed = 0  # T - total rounds
         
         # Weight Adaptation
-        self.initial_alpha1 = initial_alpha1
-        self.initial_alpha2 = initial_alpha2
+       
         self.phase_threshold = phase_threshold
         #self.total_rounds = total_rounds
         
