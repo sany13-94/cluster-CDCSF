@@ -197,6 +197,7 @@ class GPAFStrategy(FedAvg):
         
 
         self.ema_alpha = ema_alpha
+        self.alpha = ema_alpha
         self.training_times = {}  # T_c(i) - EMA of training times
         
         # Reliability Score Parameters
